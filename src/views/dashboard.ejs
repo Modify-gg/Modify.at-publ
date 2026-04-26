@@ -1,0 +1,49 @@
+<%- include("partials/layout-start", { title: "Dashboard" }) %>
+
+<section class="page-head">
+  <div>
+    <p class="eyebrow">creator dashboard</p>
+    <h1><%= currentUser.username %>, your releases are here.</h1>
+  </div>
+  <a class="primary-link" href="/upload">Upload a mod</a>
+</section>
+
+<section class="stats-row">
+  <div class="stat-panel">
+    <span>Published mods</span>
+    <strong><%= userMods.length %></strong>
+  </div>
+  <div class="stat-panel">
+    <span>Total downloads</span>
+    <strong><%= userMods.reduce((sum, mod) => sum + mod.downloadCount, 0) %></strong>
+  </div>
+  <div class="stat-panel">
+    <span>Most recent release</span>
+    <strong><%= userMods[0] ? userMods[0].title : "None yet" %></strong>
+  </div>
+</section>
+
+<section class="list-stack">
+  <% if (userMods.length) { %>
+    <% userMods.forEach((mod) => { %>
+      <a class="list-row" href="/mods/<%= mod.slug %>">
+        <div>
+          <strong><%= mod.title %></strong>
+          <p><%= mod.summary %></p>
+        </div>
+        <div class="list-row-meta">
+          <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+          <span><%= mod.game %></span>
+          <span><%= mod.downloadCount %> downloads</span>
+        </div>
+      </a>
+    <% }) %>
+  <% } else { %>
+    <article class="empty-state">
+      <h3>No releases yet</h3>
+      <p>Your dashboard is ready for its first upload.</p>
+    </article>
+  <% } %>
+</section>
+
+<%- include("partials/layout-end") %>

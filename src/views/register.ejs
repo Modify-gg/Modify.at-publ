@@ -1,0 +1,27 @@
+<%- include("partials/layout-start", { title: "Create account" }) %>
+
+<section class="auth-shell">
+  <form class="auth-card" action="/register" method="post">
+    <p class="eyebrow">creator access</p>
+    <h1>Create your account</h1>
+    <label>
+      <span>Username</span>
+      <input type="text" name="username" required />
+    </label>
+    <label>
+      <span>Email</span>
+      <input type="email" name="email" required />
+    </label>
+    <label>
+      <span>Password</span>
+      <input type="password" name="password" minlength="8" required />
+    </label>
+    <button class="primary-button" type="submit">Start publishing</button>
+    <a class="google-button" href="/auth/google">Sign up with Google</a>
+    <% if (!googleAuthEnabled) { %>
+      <p class="helper-copy">Google sign-in is wired in, but it still needs Google app keys in `.env`.</p>
+    <% } %>
+  </form>
+</section>
+
+<%- include("partials/layout-end") %>

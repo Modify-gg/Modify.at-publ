@@ -1,0 +1,82 @@
+<%- include("partials/layout-start", { title: mod.title }) %>
+
+<section class="detail-shell">
+  <div class="detail-main">
+    <p class="eyebrow"><%= mod.game %> / <%= mod.category %></p>
+    <h1><%= mod.title %></h1>
+    <p class="hero-text"><%= mod.summary %></p>
+    <div class="tag-row">
+      <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+      <span>Version <%= mod.version %></span>
+      <span><%= mod.downloadCount %> downloads</span>
+      <span>by <%= mod.authorName %></span>
+    </div>
+    <div class="detail-copy">
+      <p><%= mod.description %></p>
+    </div>
+    <form action="/mods/<%= mod.slug %>/download" method="post">
+      <button class="primary-button" type="submit">Download mod</button>
+    </form>
+
+    <section class="comments-section">
+      <div class="section-heading comments-heading">
+        <h2>Comments</h2>
+        <span><%= mod.comments.length %> total</span>
+      </div>
+
+      <% if (currentUser) { %>
+        <form class="comment-form" action="/mods/<%= mod.slug %>/comments" method="post">
+          <label>
+            <span>Add your comment</span>
+            <textarea name="content" rows="4" maxlength="1000" placeholder="Share feedback, bug notes, or install tips." required></textarea>
+          </label>
+          <button class="primary-button" type="submit">Post comment</button>
+        </form>
+      <% } else { %>
+        <div class="comment-callout">
+          <p>Sign in to join the discussion on this mod.</p>
+          <a class="secondary-link" href="/login">Sign in</a>
+        </div>
+      <% } %>
+
+      <div class="comments-list">
+        <% if (mod.comments.length) { %>
+          <% mod.comments.forEach((comment) => { %>
+            <article class="comment-card">
+              <div class="comment-head">
+                <strong><%= comment.authorName %></strong>
+                <span><%= new Date(comment.createdAt).toLocaleString() %></span>
+              </div>
+              <p><%= comment.content %></p>
+            </article>
+          <% }) %>
+        <% } else { %>
+          <article class="empty-state">
+            <h3>No comments yet</h3>
+            <p>The thread is open for feedback, setup help, and bug reports.</p>
+          </article>
+        <% } %>
+      </div>
+    </section>
+  </div>
+
+  <aside class="detail-side">
+    <div class="side-panel">
+      <h2>Release file</h2>
+      <p><%= mod.originalFileName %></p>
+      <small><%= (mod.fileSize / (1024 * 1024)).toFixed(2) %> MB</small>
+    </div>
+    <div class="side-panel">
+      <h2>Related for <%= mod.game %></h2>
+      <% if (relatedMods.length) { %>
+        <% relatedMods.forEach((entry) => { %>
+          <a class="side-link" href="/mods/<%= entry.slug %>"><%= entry.title %> <span class="side-link-meta">(<%= entry.isSafe ? "Safe" : "Unverified" %>)</span></a>
+        <% }) %>
+      <% } else { %>
+        <p>No sibling releases yet.</p>
+      <% } %>
+    </div>
+  </aside>
+</section>
+
+<%- include("partials/layout-end") %>

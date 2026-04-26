@@ -1,0 +1,11 @@
+[
+  {
+    "id": "user_ef386fadd939",
+    "username": "UnknownTheReal1",
+    "email": "edricgarcia2020@yahoo.com",
+    "passwordHash": "$2b$10$QIwHBG8tTO0UtrRo6KIN1.i5a3O/5O8knivJ.Tfwdt4DWXslBRQam",
+    "createdAt": "2026-04-26T04:56:13.248Z",
+    "role": "admin",
+    "authProvider": "local"
+  }
+]

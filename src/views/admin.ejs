@@ -1,0 +1,96 @@
+<%- include("partials/layout-start", { title: "Admin" }) %>
+
+<section class="page-head">
+  <div>
+    <p class="eyebrow">admin controls</p>
+    <h1>Moderation, catalog, and users.</h1>
+  </div>
+</section>
+
+<section class="admin-grid">
+  <div class="admin-column">
+    <div class="admin-panel">
+      <h2>Add game</h2>
+      <form class="inline-form" action="/admin/games" method="post">
+        <input type="text" name="name" placeholder="Game name" required />
+        <button class="primary-button" type="submit">Add game</button>
+      </form>
+    </div>
+
+    <div class="admin-panel">
+      <h2>Games and sub-categories</h2>
+      <div class="list-stack">
+        <% games.forEach((game) => { %>
+          <div class="admin-item">
+            <div class="admin-item-head">
+              <strong><%= game.name %></strong>
+              <span><%= game.categories.length %> categories</span>
+            </div>
+            <div class="badge-row">
+              <% game.categories.forEach((category) => { %>
+                <span class="status-badge plain-badge"><%= category %></span>
+              <% }) %>
+            </div>
+            <form class="inline-form" action="/admin/games/<%= game.slug %>/categories" method="post">
+              <input type="text" name="categoryName" placeholder="Add sub-category" required />
+              <button class="secondary-link" type="submit">Add</button>
+            </form>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-column">
+    <div class="admin-panel">
+      <h2>Mods</h2>
+      <div class="list-stack">
+        <% mods.forEach((mod) => { %>
+          <div class="admin-item">
+            <div class="admin-item-head">
+              <strong><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></strong>
+              <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+            </div>
+            <p><%= mod.game %> / <%= mod.category %> by <%= mod.authorName %></p>
+            <div class="action-row">
+              <% if (mod.isSafe) { %>
+                <form action="/admin/mods/<%= mod.id %>/unverify" method="post">
+                  <button class="secondary-link" type="submit">Mark unverified</button>
+                </form>
+              <% } else { %>
+                <form action="/admin/mods/<%= mod.id %>/verify" method="post">
+                  <button class="primary-button" type="submit">Mark safe</button>
+                </form>
+              <% } %>
+              <form action="/admin/mods/<%= mod.id %>/delete" method="post">
+                <button class="danger-button" type="submit">Delete mod</button>
+              </form>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <h2>Users</h2>
+      <div class="list-stack">
+        <% users.forEach((user) => { %>
+          <div class="admin-item">
+            <div class="admin-item-head">
+              <strong><%= user.username %></strong>
+              <span class="status-badge <%= user.role === 'admin' ? 'safe-badge' : 'plain-badge' %>"><%= user.role %></span>
+            </div>
+            <p><%= user.email %></p>
+            <% if (user.id !== currentUser.id) { %>
+              <form action="/admin/users/<%= user.id %>/delete" method="post">
+                <button class="danger-button" type="submit">Delete user</button>
+              </form>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</section>
+
+<%- include("partials/layout-end") %>

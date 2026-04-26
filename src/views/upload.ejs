@@ -1,0 +1,60 @@
+<%- include("partials/layout-start", { title: "Upload mod" }) %>
+
+<section class="auth-shell upload-shell">
+  <form class="auth-card upload-card" action="/upload" method="post" enctype="multipart/form-data">
+    <p class="eyebrow">publish a release</p>
+    <h1>Upload a mod</h1>
+    <label>
+      <span>Title</span>
+      <input type="text" name="title" required />
+    </label>
+    <label>
+      <span>Game</span>
+      <select name="gameSlug" id="gameSlug" required>
+        <% allGames.forEach((game) => { %>
+          <option value="<%= game.slug %>"><%= game.name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>
+      <span>Sub-category</span>
+      <select name="category" id="category" required></select>
+    </label>
+    <label>
+      <span>Version</span>
+      <input type="text" name="version" placeholder="1.0.0" required />
+    </label>
+    <label>
+      <span>Summary</span>
+      <input type="text" name="summary" maxlength="140" required />
+    </label>
+    <label>
+      <span>Description</span>
+      <textarea name="description" rows="6" required></textarea>
+    </label>
+    <label>
+      <span>Mod file</span>
+      <input type="file" name="modFile" required />
+    </label>
+    <button class="primary-button" type="submit">Publish release</button>
+  </form>
+</section>
+
+<script>
+  const gameCatalog = <%- JSON.stringify(allGames) %>;
+  const gameSelect = document.getElementById("gameSlug");
+  const categorySelect = document.getElementById("category");
+
+  function renderCategories() {
+    const currentGame = gameCatalog.find((entry) => entry.slug === gameSelect.value);
+    const categories = currentGame && currentGame.categories.length ? currentGame.categories : ["General"];
+    categorySelect.innerHTML = categories
+      .map((category) => `<option value="${category}">${category}</option>`)
+      .join("");
+  }
+
+  gameSelect.addEventListener("change", renderCategories);
+  renderCategories();
+</script>
+
+<%- include("partials/layout-end") %>

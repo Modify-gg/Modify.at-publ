@@ -1,0 +1,47 @@
+<%- include("partials/layout-start", { title: "Mods" }) %>
+
+<section class="page-head">
+  <div>
+    <p class="eyebrow">browse the catalog</p>
+    <h1>Find your next install.</h1>
+  </div>
+  <form class="search-bar" action="/mods" method="get">
+    <input type="text" name="q" placeholder="Search titles, games, creators" value="<%= query %>" />
+    <select name="game">
+      <option value="">All games</option>
+      <% allGames.forEach((gameOption) => { %>
+        <option value="<%= gameOption.slug %>" <%= game === gameOption.slug ? "selected" : "" %>><%= gameOption.name %></option>
+      <% }) %>
+    </select>
+    <button type="submit">Search</button>
+  </form>
+</section>
+
+<section class="mod-grid">
+  <% if (mods.length) { %>
+    <% mods.forEach((mod) => { %>
+      <article class="mod-card">
+        <div class="mod-meta-line">
+          <span><%= mod.game %></span>
+          <span><%= mod.category %></span>
+        </div>
+        <div class="badge-row">
+          <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+        </div>
+        <h3><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></h3>
+        <p><%= mod.summary %></p>
+        <div class="mod-footer">
+          <span>by <%= mod.authorName %></span>
+          <span><%= mod.downloadCount %> downloads</span>
+        </div>
+      </article>
+    <% }) %>
+  <% } else { %>
+    <article class="empty-state">
+      <h3>No matches yet</h3>
+      <p>Try a broader search or upload the exact thing you wanted to find.</p>
+    </article>
+  <% } %>
+</section>
+
+<%- include("partials/layout-end") %>
