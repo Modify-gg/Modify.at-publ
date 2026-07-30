@@ -12,7 +12,13 @@
       <span>Password</span>
       <input type="password" name="password" required />
     </label>
-    <input type="hidden" name="g-recaptcha-response" />
+    <% if (recaptchaEnabled) { %>
+      <label class="human-check">
+        <input type="checkbox" name="human-check" />
+        <span>I'm not a robot</span>
+      </label>
+      <input type="hidden" name="g-recaptcha-response" />
+    <% } %>
     <button class="primary-button" type="submit">Enter modify.at</button>
   </form>
 </section>
@@ -22,37 +28,44 @@
   <script>
     const recaptchaSiteKey = "<%= recaptchaSiteKey %>";
     document.querySelectorAll(".recaptcha-form").forEach((form) => {
-      form.addEventListener("submit", (event) => {
-        if (form.dataset.recaptchaReady === "true") {
+      const checkbox = form.querySelector("input[name='human-check']");
+      const tokenInput = form.querySelector("input[name='g-recaptcha-response']");
+      const submitButton = form.querySelector("button[type='submit']");
+
+      checkbox.addEventListener("change", () => {
+        if (!checkbox.checked) {
+          tokenInput.value = "";
+          form.dataset.recaptchaReady = "false";
+          submitButton.disabled = false;
           return;
         }
 
-        event.preventDefault();
-        const submitButton = form.querySelector("button[type='submit']");
-        if (submitButton) {
-          submitButton.disabled = true;
-        }
-
+        submitButton.disabled = true;
         if (typeof grecaptcha === "undefined") {
-          if (submitButton) {
-            submitButton.disabled = false;
-          }
+          checkbox.checked = false;
+          submitButton.disabled = false;
           return;
         }
 
         grecaptcha.ready(() => {
-          grecaptcha.execute(recaptchaSiteKey, { action: form.dataset.recaptchaAction || "login" })
+          grecaptcha.execute(recaptchaSiteKey, { action: form.dataset.recaptchaAction })
             .then((token) => {
-              form.querySelector("input[name='g-recaptcha-response']").value = token;
+              tokenInput.value = token;
               form.dataset.recaptchaReady = "true";
-              form.submit();
+              submitButton.disabled = false;
             })
             .catch(() => {
-              if (submitButton) {
-                submitButton.disabled = false;
-              }
+              checkbox.checked = false;
+              submitButton.disabled = false;
             });
         });
+      });
+
+      form.addEventListener("submit", (event) => {
+        if (form.dataset.recaptchaReady !== "true") {
+          event.preventDefault();
+          checkbox.focus();
+        }
       });
     });
   </script>
