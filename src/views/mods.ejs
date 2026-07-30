@@ -21,6 +21,13 @@
   <% if (mods.length) { %>
     <% mods.forEach((mod) => { %>
       <article class="mod-card">
+        <a class="mod-icon" href="/mods/<%= mod.slug %>" aria-label="<%= mod.title %>">
+          <% if (mod.iconUrl) { %>
+            <img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" />
+          <% } else { %>
+            <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+          <% } %>
+        </a>
         <div class="mod-meta-line">
           <span><%= mod.game %></span>
           <span><%= mod.category %></span>

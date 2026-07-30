@@ -27,6 +27,13 @@
   <% if (userMods.length) { %>
     <% userMods.forEach((mod) => { %>
       <a class="list-row" href="/mods/<%= mod.slug %>">
+        <div class="list-icon">
+          <% if (mod.iconUrl) { %>
+            <img src="<%= mod.iconUrl %>" alt="" />
+          <% } else { %>
+            <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+          <% } %>
+        </div>
         <div>
           <strong><%= mod.title %></strong>
           <p><%= mod.summary %></p>

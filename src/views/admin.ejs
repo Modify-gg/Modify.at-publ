@@ -44,30 +44,57 @@
   <div class="admin-column">
     <div class="admin-panel">
       <h2>Mods</h2>
+      <form class="search-bar admin-search" action="/admin" method="get">
+        <input type="text" name="modQuery" placeholder="Search mods, games, authors" value="<%= modQuery %>" />
+        <select name="modStatus">
+          <option value="" <%= !modStatus ? "selected" : "" %>>All statuses</option>
+          <option value="unverified" <%= modStatus === "unverified" ? "selected" : "" %>>Needs review</option>
+          <option value="safe" <%= modStatus === "safe" ? "selected" : "" %>>Safe</option>
+        </select>
+        <button type="submit">Filter</button>
+      </form>
       <div class="list-stack">
-        <% mods.forEach((mod) => { %>
-          <div class="admin-item">
-            <div class="admin-item-head">
-              <strong><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></strong>
-              <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
-            </div>
-            <p><%= mod.game %> / <%= mod.category %> by <%= mod.authorName %></p>
-            <div class="action-row">
-              <% if (mod.isSafe) { %>
-                <form action="/admin/mods/<%= mod.id %>/unverify" method="post">
-                  <button class="secondary-link" type="submit">Mark unverified</button>
+        <% if (mods.length) { %>
+          <% mods.forEach((mod) => { %>
+            <div class="admin-item">
+              <div class="admin-mod-row">
+                <div class="list-icon">
+                  <% if (mod.iconUrl) { %>
+                    <img src="<%= mod.iconUrl %>" alt="" />
+                  <% } else { %>
+                    <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+                  <% } %>
+                </div>
+                <div>
+                  <div class="admin-item-head">
+                    <strong><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></strong>
+                    <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+                  </div>
+                  <p><%= mod.game %> / <%= mod.category %> by <%= mod.authorName %></p>
+                </div>
+              </div>
+              <div class="action-row">
+                <% if (mod.isSafe) { %>
+                  <form action="/admin/mods/<%= mod.id %>/unverify" method="post">
+                    <button class="secondary-link" type="submit">Mark unverified</button>
+                  </form>
+                <% } else { %>
+                  <form action="/admin/mods/<%= mod.id %>/verify" method="post">
+                    <button class="primary-button" type="submit">Mark safe</button>
+                  </form>
+                <% } %>
+                <form action="/admin/mods/<%= mod.id %>/delete" method="post">
+                  <button class="danger-button" type="submit">Delete mod</button>
                 </form>
-              <% } else { %>
-                <form action="/admin/mods/<%= mod.id %>/verify" method="post">
-                  <button class="primary-button" type="submit">Mark safe</button>
-                </form>
-              <% } %>
-              <form action="/admin/mods/<%= mod.id %>/delete" method="post">
-                <button class="danger-button" type="submit">Delete mod</button>
-              </form>
+              </div>
             </div>
+          <% }) %>
+        <% } else { %>
+          <div class="empty-state">
+            <h3>No mods found</h3>
+            <p>Try clearing the admin search or switching status filters.</p>
           </div>
-        <% }) %>
+        <% } %>
       </div>
     </div>
 

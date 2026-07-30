@@ -109,7 +109,7 @@ function fromDbGame(game) {
 }
 
 function toDbMod(mod) {
-  return {
+  const dbMod = {
     id: mod.id,
     slug: mod.slug,
     title: mod.title,
@@ -129,6 +129,22 @@ function toDbMod(mod) {
     comments: mod.comments || [],
     created_at: mod.createdAt || new Date().toISOString(),
   };
+
+  if (mod.iconFileName || mod.iconFilePath) {
+    dbMod.icon_file_name = mod.iconFileName || null;
+    dbMod.icon_file_path = mod.iconFilePath || null;
+  }
+  if (Array.isArray(mod.galleryImages) && mod.galleryImages.length) {
+    dbMod.gallery_images = mod.galleryImages;
+  }
+  if (mod.installInstructions) {
+    dbMod.install_instructions = mod.installInstructions;
+  }
+  if (Array.isArray(mod.changelog) && mod.changelog.length) {
+    dbMod.changelog = mod.changelog;
+  }
+
+  return dbMod;
 }
 
 function fromDbMod(mod) {
@@ -150,6 +166,11 @@ function fromDbMod(mod) {
     authorId: mod.author_id,
     authorName: mod.author_name,
     comments: Array.isArray(mod.comments) ? mod.comments : [],
+    iconFileName: mod.icon_file_name || null,
+    iconFilePath: mod.icon_file_path || null,
+    galleryImages: Array.isArray(mod.gallery_images) ? mod.gallery_images : [],
+    installInstructions: mod.install_instructions || "",
+    changelog: Array.isArray(mod.changelog) ? mod.changelog : [],
     createdAt: mod.created_at,
   };
 }
@@ -417,14 +438,22 @@ async function createSignedModUpload(originalFileName, uploadId) {
     throw new Error("Supabase is not configured.");
   }
 
+  return createSignedStoredUpload(originalFileName, uploadId, "mods", "mod-file");
+}
+
+async function createSignedStoredUpload(originalFileName, uploadId, folder, fallbackName) {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
   const ext = path.extname(originalFileName).toLowerCase();
   const safeBase = String(path.basename(originalFileName, ext))
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "mod-file";
+    .slice(0, 60) || fallbackName;
   const fileName = `${Date.now()}-${safeBase}${ext || ".bin"}`;
-  const filePath = `uploads/${uploadId}/${fileName}`;
+  const filePath = `uploads/${uploadId}/${folder}/${fileName}`;
   const { data, error } = await supabase.storage.from(bucketName).createSignedUploadUrl(filePath);
 
   if (error) {
@@ -437,6 +466,10 @@ async function createSignedModUpload(originalFileName, uploadId) {
     token: data.token,
     signedUrl: data.signedUrl,
   };
+}
+
+async function createSignedAssetUpload(originalFileName, uploadId, kind) {
+  return createSignedStoredUpload(originalFileName, uploadId, kind, "image");
 }
 
 async function deleteModFile(filePath) {
@@ -467,6 +500,22 @@ async function getModDownloadUrl(filePath) {
   return data.signedUrl;
 }
 
+async function getModPreviewUrl(filePath) {
+  if (!filePath) {
+    return null;
+  }
+
+  if (!supabase) {
+    return `/uploads/${filePath}`;
+  }
+
+  const { data, error } = await supabase.storage.from(bucketName).createSignedUrl(filePath, 60 * 60);
+  if (error) {
+    return null;
+  }
+  return data.signedUrl;
+}
+
 module.exports = {
   initializeStore,
   isSupabaseEnabled,
@@ -481,6 +530,8 @@ module.exports = {
   saveGames,
   uploadModFile,
   createSignedModUpload,
+  createSignedAssetUpload,
   deleteModFile,
   getModDownloadUrl,
+  getModPreviewUrl,
 };

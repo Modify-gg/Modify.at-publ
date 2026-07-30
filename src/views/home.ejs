@@ -38,6 +38,13 @@
     <% if (featuredMods.length) { %>
       <% featuredMods.forEach((mod) => { %>
         <article class="mod-card">
+          <a class="mod-icon" href="/mods/<%= mod.slug %>" aria-label="<%= mod.title %>">
+            <% if (mod.iconUrl) { %>
+              <img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" />
+            <% } else { %>
+              <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+            <% } %>
+          </a>
           <div class="mod-meta-line">
             <span><%= mod.game %></span>
             <span><%= mod.category %></span>
@@ -70,6 +77,13 @@
     <% if (newestMods.length) { %>
       <% newestMods.forEach((mod) => { %>
         <a class="list-row" href="/mods/<%= mod.slug %>">
+          <div class="list-icon">
+            <% if (mod.iconUrl) { %>
+              <img src="<%= mod.iconUrl %>" alt="" />
+            <% } else { %>
+              <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+            <% } %>
+          </div>
           <div>
             <strong><%= mod.title %></strong>
             <p><%= mod.summary %></p>

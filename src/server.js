@@ -24,8 +24,10 @@ const {
   saveGames,
   uploadModFile,
   createSignedModUpload,
+  createSignedAssetUpload,
   deleteModFile,
   getModDownloadUrl,
+  getModPreviewUrl,
 } = require("./store");
 
 const storeReady = initializeStore();
@@ -102,10 +104,28 @@ async function getGameBySlug(slug) {
 
 async function normalizeMod(mod) {
   const game = await getGameBySlug(mod.gameSlug);
+  const galleryImages = Array.isArray(mod.galleryImages) ? mod.galleryImages : [];
+  const changelog = Array.isArray(mod.changelog) && mod.changelog.length
+    ? mod.changelog
+    : mod.version
+      ? [{
+          id: `${mod.id || mod.slug}_initial`,
+          version: mod.version,
+          notes: "Initial release.",
+          createdAt: mod.createdAt,
+        }]
+      : [];
   return {
     ...mod,
     game: game ? game.name : mod.game,
     isSafe: mod.verificationStatus === "safe",
+    iconUrl: await getModPreviewUrl(mod.iconFilePath),
+    galleryImages: await Promise.all(galleryImages.map(async (image) => ({
+      ...image,
+      url: await getModPreviewUrl(image.filePath),
+    }))),
+    installInstructions: mod.installInstructions || "",
+    changelog,
     comments: Array.isArray(mod.comments)
       ? [...mod.comments].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
       : [],
@@ -185,6 +205,36 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 1024 * 1024 * 250 },
 });
+
+const imageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+
+function isImageFileName(fileName) {
+  return imageExtensions.has(path.extname(String(fileName || "")).toLowerCase());
+}
+
+function isImageFile(file) {
+  return Boolean(file && file.originalname && isImageFileName(file.originalname) && String(file.mimetype || "").startsWith("image/"));
+}
+
+function makeChangelogEntry(version, notes) {
+  const cleanNotes = String(notes || "").trim() || "Initial release.";
+  return {
+    id: makeId("release"),
+    version: String(version || "").trim(),
+    notes: cleanNotes,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function deleteModStorage(mod) {
+  const paths = [
+    mod.filePath || mod.fileName,
+    mod.iconFilePath,
+    ...(Array.isArray(mod.galleryImages) ? mod.galleryImages.map((image) => image.filePath) : []),
+  ].filter(Boolean);
+
+  await Promise.all(paths.map((filePath) => deleteModFile(filePath)));
+}
 
 function appendSetCookie(res, cookie) {
   const existing = res.getHeader("Set-Cookie");
@@ -631,30 +681,62 @@ app.post("/upload/sign", requireAuth, async (req, res) => {
 
   const originalFileName = (req.body.originalFileName || "").trim();
   const fileSize = Number(req.body.fileSize || 0);
+  const iconOriginalFileName = (req.body.iconOriginalFileName || "").trim();
+  const galleryOriginalFileNames = Array.isArray(req.body.galleryOriginalFileNames)
+    ? req.body.galleryOriginalFileNames.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)
+    : [];
 
   if (!originalFileName || !fileSize) {
     return res.status(400).json({ error: "Missing file information." });
   }
 
+  if (iconOriginalFileName && !isImageFileName(iconOriginalFileName)) {
+    return res.status(400).json({ error: "The mod icon must be an image file." });
+  }
+
+  if (galleryOriginalFileNames.some((name) => !isImageFileName(name))) {
+    return res.status(400).json({ error: "Gallery pictures must be image files." });
+  }
+
   const uploadId = makeId("upload");
   const signedUpload = await createSignedModUpload(originalFileName, uploadId);
+  const signedIconUpload = iconOriginalFileName
+    ? await createSignedAssetUpload(iconOriginalFileName, uploadId, "icon")
+    : null;
+  const signedGalleryUploads = await Promise.all(
+    galleryOriginalFileNames.map((name) => createSignedAssetUpload(name, uploadId, "gallery"))
+  );
   const uploadToken = signPayload({
     uploadId,
     fileName: signedUpload.fileName,
     filePath: signedUpload.filePath,
     originalFileName,
     fileSize,
+    icon: signedIconUpload
+      ? {
+          fileName: signedIconUpload.fileName,
+          filePath: signedIconUpload.filePath,
+          originalFileName: iconOriginalFileName,
+        }
+      : null,
+    gallery: signedGalleryUploads.map((galleryUpload, index) => ({
+      fileName: galleryUpload.fileName,
+      filePath: galleryUpload.filePath,
+      originalFileName: galleryOriginalFileNames[index],
+    })),
     createdAt: Date.now(),
   });
 
   res.json({
     ...signedUpload,
+    icon: signedIconUpload,
+    gallery: signedGalleryUploads,
     uploadToken,
   });
 });
 
 app.post("/upload/complete", requireAuth, async (req, res) => {
-  const { title, gameSlug, category, version, summary, description, uploadToken } = req.body;
+  const { title, gameSlug, category, version, summary, description, installInstructions, releaseNotes, uploadToken } = req.body;
   const uploadedFile = verifyPayload(uploadToken);
   const game = await getGameBySlug(gameSlug);
 
@@ -702,6 +784,19 @@ app.post("/upload/complete", requireAuth, async (req, res) => {
     filePath: uploadedFile.filePath,
     originalFileName: uploadedFile.originalFileName,
     fileSize: uploadedFile.fileSize,
+    iconFileName: uploadedFile.icon ? uploadedFile.icon.fileName : null,
+    iconFilePath: uploadedFile.icon ? uploadedFile.icon.filePath : null,
+    galleryImages: Array.isArray(uploadedFile.gallery)
+      ? uploadedFile.gallery.map((image) => ({
+          id: makeId("image"),
+          fileName: image.fileName,
+          filePath: image.filePath,
+          originalFileName: image.originalFileName,
+          createdAt: new Date().toISOString(),
+        }))
+      : [],
+    installInstructions: String(installInstructions || "").trim(),
+    changelog: [makeChangelogEntry(version, releaseNotes)],
     downloadCount: 0,
     verificationStatus: "unverified",
     authorId: res.locals.currentUser.id,
@@ -715,17 +810,34 @@ app.post("/upload/complete", requireAuth, async (req, res) => {
   res.redirect(`/mods/${slug}`);
 });
 
-app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
+app.post("/upload", requireAuth, upload.fields([
+  { name: "modFile", maxCount: 1 },
+  { name: "iconFile", maxCount: 1 },
+  { name: "galleryFiles", maxCount: 6 },
+]), async (req, res) => {
   if (isHostedWithoutSupabase()) {
     req.session.notice = "Uploads need Supabase environment variables on Vercel.";
     return res.redirect("/upload");
   }
 
-  const { title, gameSlug, category, version, summary, description } = req.body;
+  const { title, gameSlug, category, version, summary, description, installInstructions, releaseNotes } = req.body;
   const game = await getGameBySlug(gameSlug);
+  const modFile = req.files && req.files.modFile ? req.files.modFile[0] : null;
+  const iconFile = req.files && req.files.iconFile ? req.files.iconFile[0] : null;
+  const galleryFiles = req.files && req.files.galleryFiles ? req.files.galleryFiles : [];
 
-  if (!title || !gameSlug || !category || !version || !summary || !description || !req.file) {
+  if (!title || !gameSlug || !category || !version || !summary || !description || !modFile) {
     req.session.notice = "Every field and a file upload are required.";
+    return res.redirect("/upload");
+  }
+
+  if (iconFile && !isImageFile(iconFile)) {
+    req.session.notice = "The mod icon must be an image file.";
+    return res.redirect("/upload");
+  }
+
+  if (galleryFiles.some((file) => !isImageFile(file))) {
+    req.session.notice = "Gallery pictures must be image files.";
     return res.redirect("/upload");
   }
 
@@ -750,7 +862,9 @@ app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
     suffix += 1;
   }
 
-  const uploadedFile = await uploadModFile(req.file, slug);
+  const uploadedFile = await uploadModFile(modFile, slug);
+  const uploadedIcon = iconFile ? await uploadModFile(iconFile, `${slug}-icon`) : null;
+  const uploadedGallery = await Promise.all(galleryFiles.map((file, index) => uploadModFile(file, `${slug}-gallery-${index + 1}`)));
   const mod = {
     id: makeId("mod"),
     slug,
@@ -762,12 +876,24 @@ app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
     description: description.trim(),
     fileName: uploadedFile.fileName,
     filePath: uploadedFile.filePath,
-    originalFileName: req.file.originalname,
-    fileSize: req.file.size,
+    originalFileName: modFile.originalname,
+    fileSize: modFile.size,
+    iconFileName: uploadedIcon ? uploadedIcon.fileName : null,
+    iconFilePath: uploadedIcon ? uploadedIcon.filePath : null,
+    galleryImages: uploadedGallery.map((image, index) => ({
+      id: makeId("image"),
+      fileName: image.fileName,
+      filePath: image.filePath,
+      originalFileName: galleryFiles[index].originalname,
+      createdAt: new Date().toISOString(),
+    })),
+    installInstructions: String(installInstructions || "").trim(),
+    changelog: [makeChangelogEntry(version, releaseNotes)],
     downloadCount: 0,
     verificationStatus: "unverified",
     authorId: res.locals.currentUser.id,
     authorName: res.locals.currentUser.username,
+    comments: [],
     createdAt: new Date().toISOString(),
   };
 
@@ -777,15 +903,39 @@ app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
   res.redirect(`/mods/${mod.slug}`);
 });
 
-app.get("/admin", requireAdmin, async (_req, res, next) => {
+app.get("/admin", requireAdmin, async (req, res, next) => {
+  const modQuery = String(req.query.modQuery || "").trim().toLowerCase();
+  const modStatus = String(req.query.modStatus || "").trim();
   const users = (await listUsers()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  let mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => {
+    if (a.isSafe !== b.isSafe) {
+      return a.isSafe ? 1 : -1;
+    }
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
   const games = (await listGames()).sort((a, b) => a.name.localeCompare(b.name));
+
+  if (modQuery) {
+    mods = mods.filter((mod) =>
+      [mod.title, mod.game, mod.category, mod.authorName, mod.summary]
+        .join(" ")
+        .toLowerCase()
+        .includes(modQuery)
+    );
+  }
+
+  if (modStatus === "safe") {
+    mods = mods.filter((mod) => mod.isSafe);
+  } else if (modStatus === "unverified") {
+    mods = mods.filter((mod) => !mod.isSafe);
+  }
 
   await renderPage(res, "admin", {
     users,
     mods,
     games,
+    modQuery,
+    modStatus,
   }, next);
 });
 
@@ -877,7 +1027,7 @@ app.post("/admin/mods/:id/delete", requireAdmin, async (req, res) => {
     return res.redirect("/admin");
   }
 
-  await deleteModFile(mod.filePath || mod.fileName);
+  await deleteModStorage(mod);
   await deleteModById(req.params.id);
   req.session.notice = `${mod.title} has been removed.`;
   res.redirect("/admin");
@@ -898,7 +1048,7 @@ app.post("/admin/users/:id/delete", requireAdmin, async (req, res) => {
 
   const mods = await listMods();
   const userMods = mods.filter((mod) => mod.authorId === user.id);
-  await Promise.all(userMods.map((mod) => deleteModFile(mod.filePath || mod.fileName)));
+  await Promise.all(userMods.map(deleteModStorage));
   await Promise.all(userMods.map((mod) => deleteModById(mod.id)));
 
   await deleteUserById(user.id);

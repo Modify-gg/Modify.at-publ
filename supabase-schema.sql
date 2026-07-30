@@ -30,6 +30,11 @@ create table if not exists public.mods (
   file_path text not null,
   original_file_name text not null,
   file_size bigint not null default 0,
+  icon_file_name text,
+  icon_file_path text,
+  gallery_images jsonb not null default '[]'::jsonb,
+  install_instructions text,
+  changelog jsonb not null default '[]'::jsonb,
   download_count integer not null default 0,
   verification_status text not null default 'unverified',
   author_id text not null references public.users(id) on delete cascade,
@@ -41,3 +46,9 @@ create table if not exists public.mods (
 insert into storage.buckets (id, name, public)
 values ('mods', 'mods', false)
 on conflict (id) do nothing;
+
+alter table public.mods add column if not exists icon_file_name text;
+alter table public.mods add column if not exists icon_file_path text;
+alter table public.mods add column if not exists gallery_images jsonb not null default '[]'::jsonb;
+alter table public.mods add column if not exists install_instructions text;
+alter table public.mods add column if not exists changelog jsonb not null default '[]'::jsonb;

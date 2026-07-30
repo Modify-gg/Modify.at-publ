@@ -33,6 +33,24 @@
       <textarea name="description" rows="6" required></textarea>
     </label>
     <label>
+      <span>Install instructions</span>
+      <textarea name="installInstructions" rows="4" placeholder="Example: Put the file in your Mods folder, then restart the game."></textarea>
+    </label>
+    <label>
+      <span>Release notes</span>
+      <textarea name="releaseNotes" rows="4" placeholder="What changed in this version?"></textarea>
+    </label>
+    <label>
+      <span>Mod icon</span>
+      <input type="file" name="iconFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+      <small class="helper-copy">Square images work best. 245x245 is perfect.</small>
+    </label>
+    <label>
+      <span>Gallery pictures</span>
+      <input type="file" name="galleryFiles" accept="image/png,image/jpeg,image/webp,image/gif" multiple />
+      <small class="helper-copy">Add up to 6 pictures that show what the mod contains.</small>
+    </label>
+    <label>
       <span>Mod file</span>
       <input type="file" name="modFile" required />
     </label>
@@ -75,9 +93,16 @@
 
       const formData = new FormData(uploadForm);
       const file = formData.get("modFile");
+      const iconFile = formData.get("iconFile");
+      const galleryFiles = formData.getAll("galleryFiles").filter((entry) => entry && entry.name);
 
       if (!file || !file.name) {
         uploadStatus.textContent = "Choose a file first.";
+        return;
+      }
+
+      if (galleryFiles.length > 6) {
+        uploadStatus.textContent = "Choose up to 6 gallery pictures.";
         return;
       }
 
@@ -96,6 +121,8 @@
             originalFileName: file.name,
             fileSize: file.size,
             contentType: file.type || "application/octet-stream",
+            iconOriginalFileName: iconFile && iconFile.name ? iconFile.name : "",
+            galleryOriginalFileNames: galleryFiles.map((galleryFile) => galleryFile.name),
           }),
         });
 
@@ -112,7 +139,7 @@
         }
 
         const signedUpload = await signResponse.json();
-        uploadStatus.textContent = "Uploading file...";
+        uploadStatus.textContent = "Uploading mod file...";
 
         const { error: uploadError } = await supabaseClient.storage
           .from(supabaseConfig.bucket)
@@ -124,10 +151,38 @@
           throw uploadError;
         }
 
+        if (signedUpload.icon && iconFile && iconFile.name) {
+          uploadStatus.textContent = "Uploading mod icon...";
+          const { error: iconUploadError } = await supabaseClient.storage
+            .from(supabaseConfig.bucket)
+            .uploadToSignedUrl(signedUpload.icon.filePath, signedUpload.icon.token, iconFile, {
+              contentType: iconFile.type || "application/octet-stream",
+            });
+
+          if (iconUploadError) {
+            throw iconUploadError;
+          }
+        }
+
+        for (let index = 0; index < signedUpload.gallery.length; index += 1) {
+          uploadStatus.textContent = `Uploading gallery picture ${index + 1} of ${signedUpload.gallery.length}...`;
+          const galleryUpload = signedUpload.gallery[index];
+          const galleryFile = galleryFiles[index];
+          const { error: galleryUploadError } = await supabaseClient.storage
+            .from(supabaseConfig.bucket)
+            .uploadToSignedUrl(galleryUpload.filePath, galleryUpload.token, galleryFile, {
+              contentType: galleryFile.type || "application/octet-stream",
+            });
+
+          if (galleryUploadError) {
+            throw galleryUploadError;
+          }
+        }
+
         uploadStatus.textContent = "Publishing mod...";
         const completeBody = new URLSearchParams();
         for (const [key, value] of formData.entries()) {
-          if (key !== "modFile") {
+          if (!["modFile", "iconFile", "galleryFiles"].includes(key)) {
             completeBody.set(key, value);
           }
         }

@@ -323,6 +323,98 @@ h2 {
   margin-bottom: 12px;
 }
 
+.mod-icon,
+.list-icon,
+.detail-icon {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(99, 245, 190, 0.18), rgba(255, 132, 97, 0.12));
+  border: 1px solid var(--line);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.mod-icon {
+  width: 100%;
+  aspect-ratio: 1;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  font-size: 3rem;
+}
+
+.list-icon {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: 12px;
+  font-size: 1.4rem;
+}
+
+.detail-icon {
+  width: 140px;
+  height: 140px;
+  flex: 0 0 140px;
+  border-radius: 18px;
+  font-size: 3rem;
+}
+
+.mod-icon img,
+.list-icon img,
+.detail-icon img,
+.gallery-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.detail-hero,
+.admin-mod-row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.media-section,
+.info-section {
+  margin-top: 24px;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gallery-grid a {
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.release-list {
+  display: grid;
+  gap: 10px;
+}
+
+.release-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.release-card p,
+.info-section p {
+  color: var(--muted);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
 .mod-meta-line,
 .mod-footer,
 .list-row-meta,
@@ -384,6 +476,12 @@ h2 {
   justify-content: space-between;
   gap: 20px;
   align-items: center;
+}
+
+.list-row > div:nth-child(2),
+.admin-mod-row > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
 }
 
 .list-row strong {
@@ -520,6 +618,10 @@ label {
   gap: 12px;
 }
 
+.admin-search {
+  margin: 16px 0;
+}
+
 .admin-item-head,
 .inline-form {
   display: flex;
@@ -544,6 +646,7 @@ label {
   .detail-shell,
   .mod-grid,
   .help-grid,
+  .gallery-grid,
   .stats-row,
   .search-bar,
   .admin-grid {
@@ -670,6 +773,8 @@ label {
   }
 
   .list-row,
+  .detail-hero,
+  .admin-mod-row,
   .list-row-meta,
   .mod-meta-line,
   .mod-footer {
@@ -677,6 +782,8 @@ label {
   }
 
   .list-row-meta,
+  .detail-hero,
+  .admin-mod-row,
   .mod-meta-line,
   .mod-footer {
     justify-content: flex-start;
@@ -690,6 +797,12 @@ label {
   .upload-card,
   .auth-card {
     width: 100%;
+  }
+
+  .detail-icon {
+    width: 112px;
+    height: 112px;
+    flex-basis: 112px;
   }
 
   .inline-form {
@@ -820,6 +933,7 @@ label {
   .admin-grid,
   .mod-grid,
   .help-grid,
+  .gallery-grid,
   .stats-row,
   .search-bar {
     gap: 12px;
@@ -891,6 +1005,8 @@ label {
   }
 
   .action-row,
+  .detail-hero,
+  .admin-mod-row,
   .admin-item-head,
   .comment-head,
   .comments-heading,
@@ -906,6 +1022,12 @@ label {
   .admin-item form,
   .admin-item button {
     width: 100%;
+  }
+
+  .list-icon {
+    width: 56px;
+    height: 56px;
+    flex-basis: 56px;
   }
 
   .mod-card h3,

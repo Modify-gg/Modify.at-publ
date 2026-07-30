@@ -2,9 +2,20 @@
 
 <section class="detail-shell">
   <div class="detail-main">
-    <p class="eyebrow"><%= mod.game %> / <%= mod.category %></p>
-    <h1><%= mod.title %></h1>
-    <p class="hero-text"><%= mod.summary %></p>
+    <div class="detail-hero">
+      <div class="detail-icon">
+        <% if (mod.iconUrl) { %>
+          <img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" />
+        <% } else { %>
+          <span><%= mod.title.slice(0, 1).toUpperCase() %></span>
+        <% } %>
+      </div>
+      <div>
+        <p class="eyebrow"><%= mod.game %> / <%= mod.category %></p>
+        <h1><%= mod.title %></h1>
+        <p class="hero-text"><%= mod.summary %></p>
+      </div>
+    </div>
     <div class="tag-row">
       <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
       <span>Version <%= mod.version %></span>
@@ -14,6 +25,42 @@
     <div class="detail-copy">
       <p><%= mod.description %></p>
     </div>
+    <% if (mod.galleryImages.length) { %>
+      <section class="media-section">
+        <h2>Pictures</h2>
+        <div class="gallery-grid">
+          <% mod.galleryImages.forEach((image) => { %>
+            <% if (image.url) { %>
+              <a href="<%= image.url %>" target="_blank" rel="noreferrer">
+                <img src="<%= image.url %>" alt="<%= image.originalFileName || mod.title %>" />
+              </a>
+            <% } %>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+    <section class="info-section">
+      <h2>Install instructions</h2>
+      <% if (mod.installInstructions) { %>
+        <p><%= mod.installInstructions %></p>
+      <% } else { %>
+        <p>No install instructions were added by the creator.</p>
+      <% } %>
+    </section>
+    <section class="info-section">
+      <h2>Version history</h2>
+      <div class="release-list">
+        <% mod.changelog.forEach((release) => { %>
+          <article class="release-card">
+            <div class="comment-head">
+              <strong>Version <%= release.version %></strong>
+              <span><%= release.createdAt ? new Date(release.createdAt).toLocaleDateString() : "" %></span>
+            </div>
+            <p><%= release.notes %></p>
+          </article>
+        <% }) %>
+      </div>
+    </section>
     <form action="/mods/<%= mod.slug %>/download" method="post">
       <button class="primary-button" type="submit">Download mod</button>
     </form>
