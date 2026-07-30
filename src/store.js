@@ -39,6 +39,10 @@ function isSupabaseEnabled() {
   return hasSupabase;
 }
 
+function isHostedWithoutSupabase() {
+  return Boolean(process.env.VERCEL && !hasSupabase);
+}
+
 function ensureFile(filePath, fallback = "[]") {
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, fallback, "utf8");
@@ -462,6 +466,7 @@ async function getModDownloadUrl(filePath) {
 module.exports = {
   initializeStore,
   isSupabaseEnabled,
+  isHostedWithoutSupabase,
   listUsers,
   saveUsers,
   deleteUserById,

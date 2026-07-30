@@ -37,6 +37,9 @@
       <input type="file" name="modFile" required />
     </label>
     <p class="helper-copy" id="uploadStatus"></p>
+    <% if (hostedWithoutSupabase) { %>
+      <p class="helper-copy">Uploads are waiting for Supabase environment variables on Vercel.</p>
+    <% } %>
     <button class="primary-button" type="submit">Publish release</button>
   </form>
 </section>

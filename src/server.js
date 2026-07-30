@@ -13,6 +13,7 @@ loadEnv();
 const {
   initializeStore,
   isSupabaseEnabled,
+  isHostedWithoutSupabase,
   listUsers,
   saveUsers,
   deleteUserById,
@@ -182,6 +183,7 @@ app.use(async (req, res, next) => {
           bucket: process.env.SUPABASE_STORAGE_BUCKET || "mods",
         }
       : null;
+  res.locals.hostedWithoutSupabase = isHostedWithoutSupabase();
   delete req.session.notice;
   next();
 });
@@ -561,6 +563,11 @@ app.post("/upload/complete", requireAuth, async (req, res) => {
 });
 
 app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
+  if (isHostedWithoutSupabase()) {
+    req.session.notice = "Uploads need Supabase environment variables on Vercel.";
+    return res.redirect("/upload");
+  }
+
   const { title, gameSlug, category, version, summary, description } = req.body;
   const game = await getGameBySlug(gameSlug);
 
