@@ -52,3 +52,12 @@ alter table public.mods add column if not exists icon_file_path text;
 alter table public.mods add column if not exists gallery_images jsonb not null default '[]'::jsonb;
 alter table public.mods add column if not exists install_instructions text;
 alter table public.mods add column if not exists changelog jsonb not null default '[]'::jsonb;
+
+-- The Express server is the only database client. Keep the public API roles out.
+alter table public.users enable row level security;
+alter table public.games enable row level security;
+alter table public.mods enable row level security;
+revoke all on table public.users from anon, authenticated, public;
+revoke all on table public.games from anon, authenticated, public;
+revoke all on table public.mods from anon, authenticated, public;
+alter default privileges in schema public revoke all on tables from anon, authenticated;
