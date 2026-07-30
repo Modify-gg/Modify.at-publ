@@ -36,6 +36,7 @@
       <span>Mod file</span>
       <input type="file" name="modFile" required />
     </label>
+    <p class="helper-copy" id="uploadStatus"></p>
     <button class="primary-button" type="submit">Publish release</button>
   </form>
 </section>
@@ -56,5 +57,80 @@
   gameSelect.addEventListener("change", renderCategories);
   renderCategories();
 </script>
+
+<% if (supabaseBrowserConfig) { %>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const supabaseConfig = <%- JSON.stringify(supabaseBrowserConfig) %>;
+    const uploadForm = document.querySelector(".upload-card");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const publishButton = uploadForm.querySelector("button[type='submit']");
+    const supabaseClient = supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+
+    uploadForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const formData = new FormData(uploadForm);
+      const file = formData.get("modFile");
+
+      if (!file || !file.name) {
+        uploadStatus.textContent = "Choose a file first.";
+        return;
+      }
+
+      publishButton.disabled = true;
+      uploadStatus.textContent = "Preparing upload...";
+
+      try {
+        const signResponse = await fetch("/upload/sign", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            originalFileName: file.name,
+            fileSize: file.size,
+            contentType: file.type || "application/octet-stream",
+          }),
+        });
+
+        if (!signResponse.ok) {
+          throw new Error("Could not prepare the upload.");
+        }
+
+        const signedUpload = await signResponse.json();
+        uploadStatus.textContent = "Uploading file...";
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from(supabaseConfig.bucket)
+          .uploadToSignedUrl(signedUpload.filePath, signedUpload.token, file, {
+            contentType: file.type || "application/octet-stream",
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        uploadStatus.textContent = "Publishing mod...";
+        const completeBody = new URLSearchParams();
+        for (const [key, value] of formData.entries()) {
+          if (key !== "modFile") {
+            completeBody.set(key, value);
+          }
+        }
+        completeBody.set("uploadToken", signedUpload.uploadToken);
+
+        const completeResponse = await fetch("/upload/complete", {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: completeBody,
+        });
+
+        window.location.href = completeResponse.url;
+      } catch (error) {
+        uploadStatus.textContent = error.message || "Upload failed. Try again.";
+        publishButton.disabled = false;
+      }
+    });
+  </script>
+<% } %>
 
 <%- include("partials/layout-end") %>

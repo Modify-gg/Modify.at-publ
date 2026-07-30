@@ -7,18 +7,27 @@ const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const { loadEnv } = require("./env");
 const { sendWelcomeEmail } = require("./mailer");
-const {
-  initializeStore,
-  listUsers,
-  saveUsers,
-  listMods,
-  saveMods,
-  listGames,
-  saveGames,
-} = require("./store");
 
 loadEnv();
-initializeStore();
+
+const {
+  initializeStore,
+  isSupabaseEnabled,
+  listUsers,
+  saveUsers,
+  deleteUserById,
+  listMods,
+  saveMods,
+  deleteModById,
+  listGames,
+  saveGames,
+  uploadModFile,
+  createSignedModUpload,
+  deleteModFile,
+  getModDownloadUrl,
+} = require("./store");
+
+const storeReady = initializeStore();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -39,12 +48,42 @@ function makeId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 }
 
-function getGameBySlug(slug) {
-  return listGames().find((game) => game.slug === slug);
+function signPayload(payload) {
+  const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
+    .update(body)
+    .digest("base64url");
+  return `${body}.${signature}`;
 }
 
-function normalizeMod(mod) {
-  const game = getGameBySlug(mod.gameSlug);
+function verifyPayload(token) {
+  const [body, signature] = String(token || "").split(".");
+  if (!body || !signature) {
+    return null;
+  }
+
+  const expected = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
+    .update(body)
+    .digest("base64url");
+
+  if (
+    signature.length !== expected.length ||
+    !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+  ) {
+    return null;
+  }
+
+  return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+}
+
+async function getGameBySlug(slug) {
+  return (await listGames()).find((game) => game.slug === slug);
+}
+
+async function normalizeMod(mod) {
+  const game = await getGameBySlug(mod.gameSlug);
   return {
     ...mod,
     game: game ? game.name : mod.game,
@@ -53,16 +92,6 @@ function normalizeMod(mod) {
       ? [...mod.comments].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
       : [],
   };
-}
-
-function removeUploadedFile(fileName) {
-  if (!fileName) {
-    return;
-  }
-  const filePath = path.join(uploadsDir, fileName);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
 }
 
 function createGoogleAuthUrl(req) {
@@ -115,17 +144,8 @@ async function exchangeGoogleCode(code) {
   return userRes.json();
 }
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const base = slugify(path.basename(file.originalname, ext)) || "mod-file";
-    cb(null, `${Date.now()}-${base}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 1024 * 1024 * 250 },
 });
 
@@ -134,6 +154,7 @@ app.set("views", path.join(__dirname, "views"));
 
 app.use("/styles", express.static(path.join(__dirname, "..", "public", "styles")));
 app.use("/uploads", express.static(uploadsDir));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(
   session({
@@ -146,12 +167,21 @@ app.use(
   })
 );
 
-app.use((req, res, next) => {
-  const users = listUsers();
+app.use(async (req, res, next) => {
+  await storeReady;
+  const users = await listUsers();
   const currentUser = users.find((user) => user.id === req.session.userId) || null;
   res.locals.currentUser = currentUser;
   res.locals.notice = req.session.notice || null;
   res.locals.googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  res.locals.supabaseBrowserConfig =
+    isSupabaseEnabled() && process.env.SUPABASE_ANON_KEY
+      ? {
+          url: process.env.SUPABASE_URL,
+          anonKey: process.env.SUPABASE_ANON_KEY,
+          bucket: process.env.SUPABASE_STORAGE_BUCKET || "mods",
+        }
+      : null;
   delete req.session.notice;
   next();
 });
@@ -172,9 +202,9 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-function renderPage(res, view, locals = {}, next) {
-  const games = listGames();
-  const mods = listMods().map(normalizeMod);
+async function renderPage(res, view, locals = {}, next) {
+  const games = await listGames();
+  const mods = await Promise.all((await listMods()).map(normalizeMod));
   res.render(
     view,
     {
@@ -194,11 +224,11 @@ function renderPage(res, view, locals = {}, next) {
   );
 }
 
-app.get("/", (_req, res, next) => {
-  const mods = listMods().map(normalizeMod).sort((a, b) => b.downloadCount - a.downloadCount);
+app.get("/", async (_req, res, next) => {
+  const mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => b.downloadCount - a.downloadCount);
   const newestMods = [...mods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
   const featuredMods = mods.slice(0, 3);
-  renderPage(res, "home", {
+  await renderPage(res, "home", {
     featuredMods,
     newestMods,
     totalMods: mods.length,
@@ -206,10 +236,10 @@ app.get("/", (_req, res, next) => {
   }, next);
 });
 
-app.get("/mods", (req, res, next) => {
+app.get("/mods", async (req, res, next) => {
   const query = (req.query.q || "").trim().toLowerCase();
   const game = (req.query.game || "").trim();
-  let mods = listMods().map(normalizeMod).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  let mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   if (query) {
     mods = mods.filter((mod) =>
@@ -224,42 +254,42 @@ app.get("/mods", (req, res, next) => {
     mods = mods.filter((mod) => mod.gameSlug === game);
   }
 
-  renderPage(res, "mods", {
+  await renderPage(res, "mods", {
     mods,
     query,
     game,
   }, next);
 });
 
-app.get("/mods/:slug", (req, res, next) => {
-  const rawMod = listMods().find((entry) => entry.slug === req.params.slug);
+app.get("/mods/:slug", async (req, res, next) => {
+  const rawMod = (await listMods()).find((entry) => entry.slug === req.params.slug);
   if (!rawMod) {
     return res.status(404).render("not-found", { message: "That mod does not exist yet." });
   }
 
-  const mod = normalizeMod(rawMod);
-  const relatedMods = listMods()
+  const mod = await normalizeMod(rawMod);
+  const relatedMods = await Promise.all((await listMods())
     .filter((entry) => entry.id !== rawMod.id && entry.gameSlug === rawMod.gameSlug)
-    .map(normalizeMod)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map(normalizeMod));
 
-  renderPage(res, "mod-detail", { mod, relatedMods }, next);
+  await renderPage(res, "mod-detail", { mod, relatedMods }, next);
 });
 
-app.post("/mods/:slug/download", (req, res) => {
-  const mods = listMods();
+app.post("/mods/:slug/download", async (req, res) => {
+  const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   if (!mod) {
     return res.status(404).render("not-found", { message: "That mod does not exist yet." });
   }
 
   mod.downloadCount += 1;
-  saveMods(mods);
-  res.redirect(`/uploads/${mod.fileName}`);
+  await saveMods(mods);
+  res.redirect(await getModDownloadUrl(mod.filePath || mod.fileName));
 });
 
-app.post("/mods/:slug/comments", requireAuth, (req, res) => {
-  const mods = listMods();
+app.post("/mods/:slug/comments", requireAuth, async (req, res) => {
+  const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   const content = (req.body.content || "").trim();
 
@@ -289,20 +319,20 @@ app.post("/mods/:slug/comments", requireAuth, (req, res) => {
     createdAt: new Date().toISOString(),
   });
 
-  saveMods(mods);
+  await saveMods(mods);
   req.session.notice = "Comment posted.";
   res.redirect(`/mods/${mod.slug}`);
 });
 
-app.get("/register", (_req, res, next) => {
-  renderPage(res, "register", {}, next);
+app.get("/register", async (_req, res, next) => {
+  await renderPage(res, "register", {}, next);
 });
 
 app.post("/register", async (req, res) => {
   const { username, email, password } = req.body;
   const normalizedEmail = (email || "").trim().toLowerCase();
   const cleanUsername = (username || "").trim();
-  const users = listUsers();
+  const users = await listUsers();
 
   if (!cleanUsername || !normalizedEmail || !password) {
     req.session.notice = "Fill out every field to create an account.";
@@ -331,7 +361,7 @@ app.post("/register", async (req, res) => {
   };
 
   users.push(user);
-  saveUsers(users);
+  await saveUsers(users);
   req.session.userId = user.id;
   try {
     await sendWelcomeEmail(user);
@@ -343,14 +373,14 @@ app.post("/register", async (req, res) => {
   res.redirect("/dashboard");
 });
 
-app.get("/login", (_req, res, next) => {
-  renderPage(res, "login", {}, next);
+app.get("/login", async (_req, res, next) => {
+  await renderPage(res, "login", {}, next);
 });
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = (email || "").trim().toLowerCase();
-  const user = listUsers().find((entry) => entry.email === normalizedEmail);
+  const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
 
   if (!user || !user.passwordHash || !(await bcrypt.compare(password || "", user.passwordHash))) {
     req.session.notice = "We could not match that email and password.";
@@ -379,7 +409,7 @@ app.get("/auth/google/callback", async (req, res) => {
 
   try {
     const googleUser = await exchangeGoogleCode(req.query.code);
-    const users = listUsers();
+    const users = await listUsers();
     let user = users.find((entry) => entry.email === String(googleUser.email || "").toLowerCase());
 
     if (!user) {
@@ -401,11 +431,11 @@ app.get("/auth/google/callback", async (req, res) => {
         createdAt: new Date().toISOString(),
       };
       users.push(user);
-      saveUsers(users);
+      await saveUsers(users);
     } else if (!user.googleId) {
       user.googleId = googleUser.sub;
       user.authProvider = user.authProvider || "google";
-      saveUsers(users);
+      await saveUsers(users);
     }
 
     req.session.userId = user.id;
@@ -424,24 +454,115 @@ app.post("/logout", (req, res) => {
   });
 });
 
-app.get("/dashboard", requireAuth, (req, res, next) => {
-  const userMods = listMods()
+app.get("/dashboard", requireAuth, async (req, res, next) => {
+  const userMods = (await Promise.all((await listMods())
     .filter((mod) => mod.authorId === res.locals.currentUser.id)
-    .map(normalizeMod)
+    .map(normalizeMod)))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  renderPage(res, "dashboard", {
+  await renderPage(res, "dashboard", {
     userMods,
   }, next);
 });
 
-app.get("/upload", requireAuth, (_req, res, next) => {
-  renderPage(res, "upload", {}, next);
+app.get("/upload", requireAuth, async (_req, res, next) => {
+  await renderPage(res, "upload", {}, next);
 });
 
-app.post("/upload", requireAuth, upload.single("modFile"), (req, res) => {
+app.post("/upload/sign", requireAuth, async (req, res) => {
+  if (!isSupabaseEnabled() || !process.env.SUPABASE_ANON_KEY) {
+    return res.status(400).json({ error: "Supabase uploads are not configured." });
+  }
+
+  const originalFileName = (req.body.originalFileName || "").trim();
+  const fileSize = Number(req.body.fileSize || 0);
+
+  if (!originalFileName || !fileSize) {
+    return res.status(400).json({ error: "Missing file information." });
+  }
+
+  const uploadId = makeId("upload");
+  const signedUpload = await createSignedModUpload(originalFileName, uploadId);
+  const uploadToken = signPayload({
+    uploadId,
+    fileName: signedUpload.fileName,
+    filePath: signedUpload.filePath,
+    originalFileName,
+    fileSize,
+    createdAt: Date.now(),
+  });
+
+  res.json({
+    ...signedUpload,
+    uploadToken,
+  });
+});
+
+app.post("/upload/complete", requireAuth, async (req, res) => {
+  const { title, gameSlug, category, version, summary, description, uploadToken } = req.body;
+  const uploadedFile = verifyPayload(uploadToken);
+  const game = await getGameBySlug(gameSlug);
+
+  if (!uploadedFile || Date.now() - uploadedFile.createdAt > 1000 * 60 * 60) {
+    req.session.notice = "Upload expired. Try again.";
+    return res.redirect("/upload");
+  }
+
+  if (!title || !gameSlug || !category || !version || !summary || !description) {
+    req.session.notice = "Every field and a file upload are required.";
+    return res.redirect("/upload");
+  }
+
+  if (!game) {
+    req.session.notice = "Choose a valid game.";
+    return res.redirect("/upload");
+  }
+
+  if (!game.categories.includes(category)) {
+    req.session.notice = "Choose a valid category for that game.";
+    return res.redirect("/upload");
+  }
+
+  const mods = await listMods();
+  const slugRoot = slugify(title) || makeId("mod");
+  const existingSlugs = new Set(mods.map((mod) => mod.slug));
+  let slug = slugRoot;
+  let suffix = 2;
+
+  while (existingSlugs.has(slug)) {
+    slug = `${slugRoot}-${suffix}`;
+    suffix += 1;
+  }
+
+  mods.push({
+    id: makeId("mod"),
+    slug,
+    title: title.trim(),
+    gameSlug: game.slug,
+    category: category.trim(),
+    version: version.trim(),
+    summary: summary.trim(),
+    description: description.trim(),
+    fileName: uploadedFile.fileName,
+    filePath: uploadedFile.filePath,
+    originalFileName: uploadedFile.originalFileName,
+    fileSize: uploadedFile.fileSize,
+    downloadCount: 0,
+    verificationStatus: "unverified",
+    authorId: res.locals.currentUser.id,
+    authorName: res.locals.currentUser.username,
+    comments: [],
+    createdAt: new Date().toISOString(),
+  });
+
+  await saveMods(mods);
+  req.session.notice = "Your mod is now published as Unverified.";
+  res.redirect(`/mods/${slug}`);
+});
+
+app.post("/upload", requireAuth, upload.single("modFile"), async (req, res) => {
   const { title, gameSlug, category, version, summary, description } = req.body;
-  const game = getGameBySlug(gameSlug);
+  const game = await getGameBySlug(gameSlug);
 
   if (!title || !gameSlug || !category || !version || !summary || !description || !req.file) {
     req.session.notice = "Every field and a file upload are required.";
@@ -458,7 +579,7 @@ app.post("/upload", requireAuth, upload.single("modFile"), (req, res) => {
     return res.redirect("/upload");
   }
 
-  const mods = listMods();
+  const mods = await listMods();
   const slugRoot = slugify(title) || makeId("mod");
   const existingSlugs = new Set(mods.map((mod) => mod.slug));
   let slug = slugRoot;
@@ -469,6 +590,7 @@ app.post("/upload", requireAuth, upload.single("modFile"), (req, res) => {
     suffix += 1;
   }
 
+  const uploadedFile = await uploadModFile(req.file, slug);
   const mod = {
     id: makeId("mod"),
     slug,
@@ -478,7 +600,8 @@ app.post("/upload", requireAuth, upload.single("modFile"), (req, res) => {
     version: version.trim(),
     summary: summary.trim(),
     description: description.trim(),
-    fileName: req.file.filename,
+    fileName: uploadedFile.fileName,
+    filePath: uploadedFile.filePath,
     originalFileName: req.file.originalname,
     fileSize: req.file.size,
     downloadCount: 0,
@@ -489,31 +612,31 @@ app.post("/upload", requireAuth, upload.single("modFile"), (req, res) => {
   };
 
   mods.push(mod);
-  saveMods(mods);
+  await saveMods(mods);
   req.session.notice = "Your mod is now published as Unverified.";
   res.redirect(`/mods/${mod.slug}`);
 });
 
-app.get("/admin", requireAdmin, (_req, res, next) => {
-  const users = listUsers().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const mods = listMods().map(normalizeMod).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const games = listGames().sort((a, b) => a.name.localeCompare(b.name));
+app.get("/admin", requireAdmin, async (_req, res, next) => {
+  const users = (await listUsers()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const games = (await listGames()).sort((a, b) => a.name.localeCompare(b.name));
 
-  renderPage(res, "admin", {
+  await renderPage(res, "admin", {
     users,
     mods,
     games,
   }, next);
 });
 
-app.post("/admin/games", requireAdmin, (req, res) => {
+app.post("/admin/games", requireAdmin, async (req, res) => {
   const name = (req.body.name || "").trim();
   if (!name) {
     req.session.notice = "Game name is required.";
     return res.redirect("/admin");
   }
 
-  const games = listGames();
+  const games = await listGames();
   const slug = slugify(name);
   if (games.some((game) => game.slug === slug)) {
     req.session.notice = "That game already exists.";
@@ -527,14 +650,14 @@ app.post("/admin/games", requireAdmin, (req, res) => {
     categories: [],
     createdAt: new Date().toISOString(),
   });
-  saveGames(games);
+  await saveGames(games);
   req.session.notice = `${name} is now available for uploads.`;
   res.redirect("/admin");
 });
 
-app.post("/admin/games/:slug/categories", requireAdmin, (req, res) => {
+app.post("/admin/games/:slug/categories", requireAdmin, async (req, res) => {
   const categoryName = (req.body.categoryName || "").trim();
-  const games = listGames();
+  const games = await listGames();
   const game = games.find((entry) => entry.slug === req.params.slug);
 
   if (!game) {
@@ -553,13 +676,13 @@ app.post("/admin/games/:slug/categories", requireAdmin, (req, res) => {
   }
 
   game.categories.push(categoryName);
-  saveGames(games);
+  await saveGames(games);
   req.session.notice = `${categoryName} added to ${game.name}.`;
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/verify", requireAdmin, (req, res) => {
-  const mods = listMods();
+app.post("/admin/mods/:id/verify", requireAdmin, async (req, res) => {
+  const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
     req.session.notice = "Mod not found.";
@@ -567,13 +690,13 @@ app.post("/admin/mods/:id/verify", requireAdmin, (req, res) => {
   }
 
   mod.verificationStatus = "safe";
-  saveMods(mods);
+  await saveMods(mods);
   req.session.notice = `${mod.title} is now marked Safe.`;
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/unverify", requireAdmin, (req, res) => {
-  const mods = listMods();
+app.post("/admin/mods/:id/unverify", requireAdmin, async (req, res) => {
+  const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
     req.session.notice = "Mod not found.";
@@ -581,44 +704,44 @@ app.post("/admin/mods/:id/unverify", requireAdmin, (req, res) => {
   }
 
   mod.verificationStatus = "unverified";
-  saveMods(mods);
+  await saveMods(mods);
   req.session.notice = `${mod.title} is now marked Unverified.`;
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/delete", requireAdmin, (req, res) => {
-  const mods = listMods();
+app.post("/admin/mods/:id/delete", requireAdmin, async (req, res) => {
+  const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
     req.session.notice = "Mod not found.";
     return res.redirect("/admin");
   }
 
-  removeUploadedFile(mod.fileName);
-  saveMods(mods.filter((entry) => entry.id !== req.params.id));
+  await deleteModFile(mod.filePath || mod.fileName);
+  await deleteModById(req.params.id);
   req.session.notice = `${mod.title} has been removed.`;
   res.redirect("/admin");
 });
 
-app.post("/admin/users/:id/delete", requireAdmin, (req, res) => {
+app.post("/admin/users/:id/delete", requireAdmin, async (req, res) => {
   if (req.params.id === res.locals.currentUser.id) {
     req.session.notice = "You cannot delete the admin account you are using.";
     return res.redirect("/admin");
   }
 
-  const users = listUsers();
+  const users = await listUsers();
   const user = users.find((entry) => entry.id === req.params.id);
   if (!user) {
     req.session.notice = "User not found.";
     return res.redirect("/admin");
   }
 
-  const mods = listMods();
+  const mods = await listMods();
   const userMods = mods.filter((mod) => mod.authorId === user.id);
-  userMods.forEach((mod) => removeUploadedFile(mod.fileName));
+  await Promise.all(userMods.map((mod) => deleteModFile(mod.filePath || mod.fileName)));
+  await Promise.all(userMods.map((mod) => deleteModById(mod.id)));
 
-  saveUsers(users.filter((entry) => entry.id !== user.id));
-  saveMods(mods.filter((mod) => mod.authorId !== user.id));
+  await deleteUserById(user.id);
   req.session.notice = `${user.username} and their mods have been removed.`;
   res.redirect("/admin");
 });

@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate:supabase": "node scripts/migrate-local-to-supabase.js"
   },
   "engines": {
     "node": "22.x"
@@ -15,6 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "bcryptjs": "^3.0.3",
     "ejs": "^5.0.2",
     "express": "^5.2.1",
