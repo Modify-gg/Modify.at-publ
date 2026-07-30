@@ -13,6 +13,15 @@
         <option value="<%= gameOption.slug %>" <%= game === gameOption.slug ? "selected" : "" %>><%= gameOption.name %></option>
       <% }) %>
     </select>
+    <select name="status">
+      <option value="" <%= !status ? "selected" : "" %>>All statuses</option>
+      <option value="safe" <%= status === "safe" ? "selected" : "" %>>Safe only</option>
+    </select>
+    <select name="sort">
+      <option value="newest" <%= sort === "newest" ? "selected" : "" %>>Newest</option>
+      <option value="popular" <%= sort === "popular" ? "selected" : "" %>>Most downloaded</option>
+      <option value="oldest" <%= sort === "oldest" ? "selected" : "" %>>Oldest</option>
+    </select>
     <button type="submit">Search</button>
   </form>
 </section>
@@ -38,7 +47,7 @@
         <h3><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></h3>
         <p><%= mod.summary %></p>
         <div class="mod-footer">
-          <span>by <%= mod.authorName %></span>
+          <span>by <a href="/creators/<%= encodeURIComponent(mod.authorName) %>"><%= mod.authorName %></a></span>
           <span><%= mod.downloadCount %> downloads</span>
         </div>
       </article>

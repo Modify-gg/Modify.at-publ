@@ -1,0 +1,30 @@
+<%- include("partials/layout-start", { title: creator.username }) %>
+
+<section class="page-head">
+  <div>
+    <p class="eyebrow">creator profile</p>
+    <h1><%= creator.username %></h1>
+    <p class="hero-text"><%= creatorMods.length %> published mod<%= creatorMods.length === 1 ? "" : "s" %>.</p>
+  </div>
+</section>
+
+<section class="mod-grid">
+  <% if (creatorMods.length) { %>
+    <% creatorMods.forEach((mod) => { %>
+      <article class="mod-card">
+        <a class="mod-icon" href="/mods/<%= mod.slug %>" aria-label="<%= mod.title %>">
+          <% if (mod.iconUrl) { %><img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" /><% } else { %><span><%= mod.title.slice(0, 1).toUpperCase() %></span><% } %>
+        </a>
+        <div class="mod-meta-line"><span><%= mod.game %></span><span><%= mod.category %></span></div>
+        <div class="badge-row"><span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span></div>
+        <h3><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></h3>
+        <p><%= mod.summary %></p>
+        <div class="mod-footer"><span><%= mod.downloadCount %> downloads</span><span>Version <%= mod.version %></span></div>
+      </article>
+    <% }) %>
+  <% } else { %>
+    <article class="empty-state"><h3>No published mods yet</h3><p>This creator has not published a mod.</p></article>
+  <% } %>
+</section>
+
+<%- include("partials/layout-end") %>

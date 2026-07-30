@@ -20,7 +20,7 @@
       <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
       <span>Version <%= mod.version %></span>
       <span><%= mod.downloadCount %> downloads</span>
-      <span>by <%= mod.authorName %></span>
+        <span>by <a href="/creators/<%= encodeURIComponent(mod.authorName) %>"><%= mod.authorName %></a></span>
     </div>
     <div class="detail-copy">
       <p><%= mod.description %></p>
@@ -64,6 +64,30 @@
     <form action="/mods/<%= mod.slug %>/download" method="get">
       <button class="primary-button" type="submit">Download mod</button>
     </form>
+
+    <% if (currentUser) { %>
+      <details class="report-panel">
+        <summary>Report this mod</summary>
+        <form action="/mods/<%= mod.slug %>/report" method="post">
+          <label>
+            <span>Reason</span>
+            <select name="reason" required>
+              <option value="">Choose a reason</option>
+              <option value="malware">Possible malware</option>
+              <option value="broken">Broken or unusable</option>
+              <option value="copyright">Copyright concern</option>
+              <option value="misleading">Misleading information</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            <span>Details</span>
+            <textarea name="details" rows="3" maxlength="1000" placeholder="Tell moderators what happened."></textarea>
+          </label>
+          <button class="danger-button" type="submit">Send report</button>
+        </form>
+      </details>
+    <% } %>
 
     <section class="comments-section">
       <div class="section-heading comments-heading">

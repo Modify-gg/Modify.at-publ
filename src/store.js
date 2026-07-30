@@ -7,6 +7,8 @@ const dataDir = path.join(__dirname, "..", "data");
 const usersFile = path.join(dataDir, "users.json");
 const modsFile = path.join(dataDir, "mods.json");
 const gamesFile = path.join(dataDir, "games.json");
+const reportsFile = path.join(dataDir, "reports.json");
+const activityFile = path.join(dataDir, "activity.json");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
 const adminSeed = {
@@ -171,6 +173,66 @@ function fromDbMod(mod) {
   };
 }
 
+function fromDbReport(report) {
+  return {
+    id: report.id,
+    modId: report.mod_id,
+    modSlug: report.mod_slug,
+    modTitle: report.mod_title,
+    reporterId: report.reporter_id,
+    reporterName: report.reporter_name,
+    reason: report.reason,
+    details: report.details,
+    status: report.status,
+    createdAt: report.created_at,
+    resolvedAt: report.resolved_at,
+    resolvedBy: report.resolved_by,
+  };
+}
+
+function toDbReport(report) {
+  return {
+    id: report.id,
+    mod_id: report.modId,
+    mod_slug: report.modSlug,
+    mod_title: report.modTitle,
+    reporter_id: report.reporterId,
+    reporter_name: report.reporterName,
+    reason: report.reason,
+    details: report.details || "",
+    status: report.status || "open",
+    created_at: report.createdAt || new Date().toISOString(),
+    resolved_at: report.resolvedAt || null,
+    resolved_by: report.resolvedBy || null,
+  };
+}
+
+function fromDbActivity(entry) {
+  return {
+    id: entry.id,
+    actorId: entry.actor_id,
+    actorName: entry.actor_name,
+    action: entry.action,
+    targetType: entry.target_type,
+    targetId: entry.target_id,
+    details: entry.details,
+    createdAt: entry.created_at,
+  };
+}
+
+function toDbActivity(entry) {
+  return {
+    id: entry.id,
+    actor_id: entry.actorId,
+    actor_name: entry.actorName,
+    action: entry.action,
+    target_type: entry.targetType,
+    target_id: entry.targetId,
+    details: entry.details || "",
+    created_at: entry.createdAt || new Date().toISOString(),
+  };
+}
+
 async function listUsers() {
   if (!supabase) {
     return readJson(usersFile);
@@ -255,6 +317,46 @@ async function listGames() {
     throw error;
   }
   return data.map(fromDbGame);
+}
+
+async function listReports() {
+  if (!supabase) {
+    return readJson(reportsFile);
+  }
+
+  const { data, error } = await supabase.from("reports").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map(fromDbReport);
+}
+
+async function saveReports(reports) {
+  if (!supabase) {
+    writeJson(reportsFile, reports);
+    return;
+  }
+
+  const { error } = await supabase.from("reports").upsert(reports.map(toDbReport), { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function listActivity() {
+  if (!supabase) {
+    return readJson(activityFile);
+  }
+
+  const { data, error } = await supabase.from("activity_log").select("*").order("created_at", { ascending: false }).limit(100);
+  if (error) throw error;
+  return data.map(fromDbActivity);
+}
+
+async function saveActivity(entries) {
+  if (!supabase) {
+    writeJson(activityFile, entries.slice(-100));
+    return;
+  }
+
+  const { error } = await supabase.from("activity_log").upsert(entries.map(toDbActivity), { onConflict: "id" });
+  if (error) throw error;
 }
 
 async function saveGames(games) {
@@ -382,6 +484,8 @@ async function initializeStore() {
     fs.mkdirSync(uploadsDir, { recursive: true });
     ensureFile(usersFile);
     ensureFile(modsFile);
+    ensureFile(reportsFile);
+    ensureFile(activityFile);
 
     if (!fs.existsSync(gamesFile)) {
       writeJson(gamesFile, defaultGames);
@@ -532,6 +636,10 @@ module.exports = {
   deleteModById,
   listGames,
   saveGames,
+  listReports,
+  saveReports,
+  listActivity,
+  saveActivity,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,

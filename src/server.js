@@ -23,6 +23,10 @@ const {
   deleteModById,
   listGames,
   saveGames,
+  listReports,
+  saveReports,
+  listActivity,
+  saveActivity,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,
@@ -550,6 +554,21 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+async function logActivity(user, action, targetType, targetId, details) {
+  const entries = await listActivity();
+  entries.push({
+    id: makeId("activity"),
+    actorId: user.id,
+    actorName: user.username,
+    action,
+    targetType,
+    targetId: targetId || null,
+    details: details || "",
+    createdAt: new Date().toISOString(),
+  });
+  await saveActivity(entries.slice(-100));
+}
+
 async function renderPage(res, view, locals = {}, next) {
   const games = await listGames();
   const mods = await Promise.all((await listMods()).map(normalizeMod));
@@ -591,6 +610,9 @@ app.get("/help", async (_req, res, next) => {
 app.get("/mods", async (req, res, next) => {
   const query = (req.query.q || "").trim().toLowerCase();
   const game = (req.query.game || "").trim();
+  const category = (req.query.category || "").trim();
+  const status = (req.query.status || "").trim();
+  const sort = (req.query.sort || "newest").trim();
   let mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   if (query) {
@@ -606,11 +628,43 @@ app.get("/mods", async (req, res, next) => {
     mods = mods.filter((mod) => mod.gameSlug === game);
   }
 
+  if (category) {
+    mods = mods.filter((mod) => mod.category.toLowerCase() === category.toLowerCase());
+  }
+
+  if (status === "safe") {
+    mods = mods.filter((mod) => mod.isSafe);
+  }
+
+  if (sort === "popular") {
+    mods.sort((a, b) => b.downloadCount - a.downloadCount);
+  } else if (sort === "oldest") {
+    mods.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  }
+
   await renderPage(res, "mods", {
     mods,
     query,
     game,
+    category,
+    status,
+    sort,
   }, next);
+});
+
+app.get("/creators/:username", async (req, res, next) => {
+  const users = await listUsers();
+  const creator = users.find((user) => user.username.toLowerCase() === req.params.username.toLowerCase());
+  if (!creator) {
+    return res.status(404).render("not-found", { message: "That creator does not exist." });
+  }
+
+  const creatorMods = (await Promise.all((await listMods())
+    .filter((mod) => mod.authorId === creator.id)
+    .map(normalizeMod)))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  await renderPage(res, "creator", { creator, creatorMods }, next);
 });
 
 app.get("/mods/:slug", async (req, res, next) => {
@@ -710,6 +764,35 @@ app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res)
 
   await saveMods(mods);
   req.session.notice = "Comment posted.";
+  res.redirect(`/mods/${mod.slug}`);
+});
+
+app.post("/mods/:slug/report", requireAuth, commentRateLimit, async (req, res) => {
+  const mod = (await listMods()).find((entry) => entry.slug === req.params.slug);
+  const reason = String(req.body.reason || "").trim();
+  const details = String(req.body.details || "").trim();
+  const allowedReasons = new Set(["malware", "broken", "copyright", "misleading", "other"]);
+
+  if (!mod || !allowedReasons.has(reason)) {
+    req.session.notice = "Choose a valid report reason.";
+    return res.redirect(`/mods/${req.params.slug}`);
+  }
+
+  const reports = await listReports();
+  reports.push({
+    id: makeId("report"),
+    modId: mod.id,
+    modSlug: mod.slug,
+    modTitle: mod.title,
+    reporterId: res.locals.currentUser.id,
+    reporterName: res.locals.currentUser.username,
+    reason,
+    details: details.slice(0, 1000),
+    status: "open",
+    createdAt: new Date().toISOString(),
+  });
+  await saveReports(reports);
+  req.session.notice = "Thanks. Your report was sent to the moderation team.";
   res.redirect(`/mods/${mod.slug}`);
 });
 
@@ -1154,6 +1237,8 @@ app.get("/admin", requireAdmin, async (req, res, next) => {
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
   const games = (await listGames()).sort((a, b) => a.name.localeCompare(b.name));
+  const reports = (await listReports()).filter((report) => report.status === "open");
+  const activity = await listActivity();
 
   if (modQuery) {
     mods = mods.filter((mod) =>
@@ -1176,7 +1261,26 @@ app.get("/admin", requireAdmin, async (req, res, next) => {
     games,
     modQuery,
     modStatus,
+    reports,
+    activity,
   }, next);
+});
+
+app.post("/admin/reports/:id/:action", requireAdmin, adminRateLimit, async (req, res) => {
+  const reports = await listReports();
+  const report = reports.find((entry) => entry.id === req.params.id);
+  if (!report || !["resolve", "dismiss"].includes(req.params.action)) {
+    req.session.notice = "Report not found.";
+    return res.redirect("/admin");
+  }
+
+  report.status = req.params.action === "resolve" ? "resolved" : "dismissed";
+  report.resolvedAt = new Date().toISOString();
+  report.resolvedBy = res.locals.currentUser.username;
+  await saveReports(reports);
+  await logActivity(res.locals.currentUser, `report_${report.status}`, "report", report.id, report.modTitle);
+  req.session.notice = `Report ${report.status}.`;
+  res.redirect("/admin");
 });
 
 app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
@@ -1227,6 +1331,7 @@ app.post("/admin/games/:slug/categories", requireAdmin, adminRateLimit, async (r
 
   game.categories.push(categoryName);
   await saveGames(games);
+  await logActivity(res.locals.currentUser, "category_added", "game", game.slug, `${categoryName} added`);
   req.session.notice = `${categoryName} added to ${game.name}.`;
   res.redirect("/admin");
 });
@@ -1241,6 +1346,7 @@ app.post("/admin/mods/:id/verify", requireAdmin, adminRateLimit, async (req, res
 
   mod.verificationStatus = "safe";
   await saveMods(mods);
+  await logActivity(res.locals.currentUser, "mod_marked_safe", "mod", mod.id, mod.title);
   req.session.notice = `${mod.title} is now marked Safe.`;
   res.redirect("/admin");
 });
@@ -1255,6 +1361,7 @@ app.post("/admin/mods/:id/unverify", requireAdmin, adminRateLimit, async (req, r
 
   mod.verificationStatus = "unverified";
   await saveMods(mods);
+  await logActivity(res.locals.currentUser, "mod_marked_unverified", "mod", mod.id, mod.title);
   req.session.notice = `${mod.title} is now marked Unverified.`;
   res.redirect("/admin");
 });
@@ -1269,6 +1376,7 @@ app.post("/admin/mods/:id/delete", requireAdmin, adminRateLimit, async (req, res
 
   await deleteModStorage(mod);
   await deleteModById(req.params.id);
+  await logActivity(res.locals.currentUser, "mod_deleted", "mod", mod.id, mod.title);
   req.session.notice = `${mod.title} has been removed.`;
   res.redirect("/admin");
 });
@@ -1292,6 +1400,7 @@ app.post("/admin/users/:id/delete", requireAdmin, adminRateLimit, async (req, re
   await Promise.all(userMods.map((mod) => deleteModById(mod.id)));
 
   await deleteUserById(user.id);
+  await logActivity(res.locals.currentUser, "user_deleted", "user", user.id, user.username);
   req.session.notice = `${user.username} and their mods have been removed.`;
   res.redirect("/admin");
 });

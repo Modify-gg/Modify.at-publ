@@ -10,6 +10,24 @@
 <section class="admin-grid">
   <div class="admin-column">
     <div class="admin-panel">
+      <h2>Open reports</h2>
+      <% if (reports.length) { %>
+        <div class="list-stack">
+          <% reports.forEach((report) => { %>
+            <div class="admin-item">
+              <div class="admin-item-head"><strong><a href="/mods/<%= report.modSlug %>"><%= report.modTitle %></a></strong><span><%= report.reason %></span></div>
+              <p>Reported by <%= report.reporterName %><% if (report.details) { %>: <%= report.details %><% } %></p>
+              <div class="action-row">
+                <form action="/admin/reports/<%= report.id %>/resolve" method="post"><button class="primary-button" type="submit">Resolve</button></form>
+                <form action="/admin/reports/<%= report.id %>/dismiss" method="post"><button class="secondary-link" type="submit">Dismiss</button></form>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %><p>No open reports.</p><% } %>
+    </div>
+
+    <div class="admin-panel">
       <h2>Add game</h2>
       <form class="inline-form" action="/admin/games" method="post">
         <input type="text" name="name" placeholder="Game name" required />
@@ -36,6 +54,15 @@
               <button class="secondary-link" type="submit">Add</button>
             </form>
           </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <h2>Recent activity</h2>
+      <div class="list-stack">
+        <% activity.slice(0, 12).forEach((entry) => { %>
+          <div class="admin-item"><div class="admin-item-head"><strong><%= entry.action.replaceAll("_", " ") %></strong><span><%= new Date(entry.createdAt).toLocaleString() %></span></div><p><%= entry.actorName %><% if (entry.details) { %> / <%= entry.details %><% } %></p></div>
         <% }) %>
       </div>
     </div>

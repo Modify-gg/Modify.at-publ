@@ -43,6 +43,32 @@ create table if not exists public.mods (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.reports (
+  id text primary key,
+  mod_id text not null,
+  mod_slug text not null,
+  mod_title text not null,
+  reporter_id text not null references public.users(id) on delete cascade,
+  reporter_name text not null,
+  reason text not null,
+  details text not null default '',
+  status text not null default 'open',
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz,
+  resolved_by text
+);
+
+create table if not exists public.activity_log (
+  id text primary key,
+  actor_id text,
+  actor_name text not null,
+  action text not null,
+  target_type text not null,
+  target_id text,
+  details text not null default '',
+  created_at timestamptz not null default now()
+);
+
 insert into storage.buckets (id, name, public)
 values ('mods', 'mods', false)
 on conflict (id) do nothing;
@@ -57,7 +83,11 @@ alter table public.mods add column if not exists changelog jsonb not null defaul
 alter table public.users enable row level security;
 alter table public.games enable row level security;
 alter table public.mods enable row level security;
+alter table public.reports enable row level security;
+alter table public.activity_log enable row level security;
 revoke all on table public.users from anon, authenticated, public;
 revoke all on table public.games from anon, authenticated, public;
 revoke all on table public.mods from anon, authenticated, public;
+revoke all on table public.reports from anon, authenticated, public;
+revoke all on table public.activity_log from anon, authenticated, public;
 alter default privileges in schema public revoke all on tables from anon, authenticated;
