@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const { Readable } = require("stream");
 const session = require("express-session");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
@@ -640,6 +641,26 @@ async function handleModDownload(req, res, next) {
     const downloadUrl = await getModDownloadUrl(filePath, mod.originalFileName || mod.fileName);
     mod.downloadCount += 1;
     await saveMods(mods);
+
+    // Proxy the private object so browsers receive an attachment response from
+    // modify.at instead of navigating to the signed storage URL.
+    if (isSupabaseEnabled()) {
+      const fileResponse = await fetch(downloadUrl);
+      if (!fileResponse.ok || !fileResponse.body) {
+        throw new Error(`Storage download failed with status ${fileResponse.status}`);
+      }
+
+      const downloadName = path.basename(mod.originalFileName || mod.fileName || "mod-download")
+        .replace(/[\r\n"\\]/g, "_");
+      res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+      res.setHeader("Content-Type", fileResponse.headers.get("content-type") || "application/octet-stream");
+      const contentLength = fileResponse.headers.get("content-length");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+      return Readable.fromWeb(fileResponse.body).pipe(res);
+    }
+
     return res.redirect(downloadUrl);
   } catch (error) {
     console.error("Download link failed", {
