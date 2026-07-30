@@ -686,8 +686,12 @@ app.post("/upload/sign", requireAuth, async (req, res) => {
     ? req.body.galleryOriginalFileNames.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)
     : [];
 
-  if (!originalFileName || !fileSize) {
-    return res.status(400).json({ error: "Missing file information." });
+  if (!originalFileName) {
+    return res.status(400).json({ error: "Choose a mod file first." });
+  }
+
+  if (!fileSize) {
+    return res.status(400).json({ error: "That file looks empty. Download it to the device first, then choose it again." });
   }
 
   if (iconOriginalFileName && !isImageFileName(iconOriginalFileName)) {

@@ -101,6 +101,11 @@
         return;
       }
 
+      if (!file.size) {
+        uploadStatus.textContent = "That file looks empty. Download it to the device first, then choose it again.";
+        return;
+      }
+
       if (galleryFiles.length > 6) {
         uploadStatus.textContent = "Choose up to 6 gallery pictures.";
         return;
