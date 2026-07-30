@@ -130,19 +130,11 @@ function toDbMod(mod) {
     created_at: mod.createdAt || new Date().toISOString(),
   };
 
-  if (mod.iconFileName || mod.iconFilePath) {
-    dbMod.icon_file_name = mod.iconFileName || null;
-    dbMod.icon_file_path = mod.iconFilePath || null;
-  }
-  if (Array.isArray(mod.galleryImages) && mod.galleryImages.length) {
-    dbMod.gallery_images = mod.galleryImages;
-  }
-  if (mod.installInstructions) {
-    dbMod.install_instructions = mod.installInstructions;
-  }
-  if (Array.isArray(mod.changelog) && mod.changelog.length) {
-    dbMod.changelog = mod.changelog;
-  }
+  dbMod.icon_file_name = mod.iconFileName || null;
+  dbMod.icon_file_path = mod.iconFilePath || null;
+  dbMod.gallery_images = Array.isArray(mod.galleryImages) ? mod.galleryImages : [];
+  dbMod.install_instructions = mod.installInstructions || null;
+  dbMod.changelog = Array.isArray(mod.changelog) ? mod.changelog : [];
 
   return dbMod;
 }
