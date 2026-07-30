@@ -34,6 +34,19 @@ const app = express();
 const port = process.env.PORT || 3000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
+function getSupabaseEnv() {
+  const url = (process.env.SUPABASE_URL || "").trim();
+  const anonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
+  const bucket = (process.env.SUPABASE_STORAGE_BUCKET || "mods").trim();
+
+  return {
+    url,
+    anonKey,
+    bucket,
+    hasValidUrl: /^https?:\/\/.+/.test(url),
+  };
+}
+
 fs.mkdirSync(uploadsDir, { recursive: true });
 
 function slugify(value) {
@@ -175,12 +188,13 @@ app.use(async (req, res, next) => {
   res.locals.currentUser = currentUser;
   res.locals.notice = req.session.notice || null;
   res.locals.googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  const supabaseEnv = getSupabaseEnv();
   res.locals.supabaseBrowserConfig =
-    isSupabaseEnabled() && process.env.SUPABASE_ANON_KEY
+    isSupabaseEnabled() && supabaseEnv.anonKey
       ? {
-          url: process.env.SUPABASE_URL,
-          anonKey: process.env.SUPABASE_ANON_KEY,
-          bucket: process.env.SUPABASE_STORAGE_BUCKET || "mods",
+          url: supabaseEnv.url,
+          anonKey: supabaseEnv.anonKey,
+          bucket: supabaseEnv.bucket,
         }
       : null;
   res.locals.hostedWithoutSupabase = isHostedWithoutSupabase();
@@ -476,12 +490,14 @@ app.get("/debug/config", (req, res) => {
     return res.status(404).render("not-found", { message: "That page could not be found." });
   }
 
+  const supabaseEnv = getSupabaseEnv();
   res.json({
     vercel: Boolean(process.env.VERCEL),
-    supabaseUrl: Boolean(process.env.SUPABASE_URL),
-    supabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
-    supabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || null,
+    supabaseUrl: Boolean(supabaseEnv.url),
+    supabaseUrlValid: supabaseEnv.hasValidUrl,
+    supabaseAnonKey: Boolean(supabaseEnv.anonKey),
+    supabaseServiceRoleKey: Boolean((process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim()),
+    supabaseStorageBucket: supabaseEnv.bucket,
     supabaseServerEnabled: isSupabaseEnabled(),
     supabaseBrowserEnabled: Boolean(res.locals.supabaseBrowserConfig),
     hostedWithoutSupabase: isHostedWithoutSupabase(),
@@ -490,7 +506,7 @@ app.get("/debug/config", (req, res) => {
 });
 
 app.post("/upload/sign", requireAuth, async (req, res) => {
-  if (!isSupabaseEnabled() || !process.env.SUPABASE_ANON_KEY) {
+  if (!isSupabaseEnabled() || !getSupabaseEnv().anonKey) {
     return res.status(400).json({ error: "Supabase uploads are not configured." });
   }
 

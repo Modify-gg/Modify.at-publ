@@ -25,10 +25,14 @@ const defaultGames = [
   },
 ];
 
-const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "mods";
-const hasSupabase = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseUrl = (process.env.SUPABASE_URL || "").trim();
+const supabaseServiceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const bucketName = (process.env.SUPABASE_STORAGE_BUCKET || "mods").trim();
+const hasSupabase = Boolean(
+  /^https?:\/\/.+/.test(supabaseUrl) && supabaseServiceRoleKey
+);
 const supabase = hasSupabase
-  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  ? createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
         persistSession: false,
       },
