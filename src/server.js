@@ -136,6 +136,53 @@ function hasGoogleAuth() {
   return Boolean((process.env.GOOGLE_CLIENT_ID || "").trim() && (process.env.GOOGLE_CLIENT_SECRET || "").trim());
 }
 
+function getRecaptchaConfig() {
+  return {
+    siteKey: (process.env.RECAPTCHA_SITE_KEY || "").trim(),
+    secretKey: (process.env.RECAPTCHA_SECRET_KEY || "").trim(),
+  };
+}
+
+function isRecaptchaEnabled() {
+  const { siteKey, secretKey } = getRecaptchaConfig();
+  return Boolean(siteKey && secretKey);
+}
+
+async function verifyRecaptcha(req) {
+  if (!isRecaptchaEnabled()) {
+    return true;
+  }
+
+  const token = String(req.body["g-recaptcha-response"] || "").trim();
+  if (!token) {
+    return false;
+  }
+
+  try {
+    const response = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        secret: getRecaptchaConfig().secretKey,
+        response: token,
+        remoteip: req.ip,
+      }),
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json();
+    return Boolean(result.success);
+  } catch (error) {
+    console.error("reCAPTCHA verification failed:", error.message);
+    return false;
+  }
+}
+
 function getBaseUrl(req) {
   const configuredUrl = (process.env.PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
   if (configuredUrl) {
@@ -334,6 +381,8 @@ app.use(async (req, res, next) => {
   res.locals.currentUser = currentUser;
   res.locals.notice = req.session.notice || null;
   res.locals.googleAuthEnabled = hasGoogleAuth();
+  res.locals.recaptchaSiteKey = getRecaptchaConfig().siteKey;
+  res.locals.recaptchaEnabled = isRecaptchaEnabled();
   const supabaseEnv = getSupabaseEnv();
   res.locals.supabaseBrowserConfig =
     isSupabaseEnabled() && supabaseEnv.anonKey
@@ -517,6 +566,11 @@ app.post("/register", async (req, res) => {
   const cleanUsername = (username || "").trim();
   const users = await listUsers();
 
+  if (!(await verifyRecaptcha(req))) {
+    req.session.notice = "Please finish the reCAPTCHA check before creating an account.";
+    return res.redirect("/register");
+  }
+
   if (!cleanUsername || !normalizedEmail || !password) {
     req.session.notice = "Fill out every field to create an account.";
     return res.redirect("/register");
@@ -564,6 +618,11 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = (email || "").trim().toLowerCase();
   const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
+
+  if (!(await verifyRecaptcha(req))) {
+    req.session.notice = "Please finish the reCAPTCHA check before signing in.";
+    return res.redirect("/login");
+  }
 
   if (!user || !user.passwordHash || !(await bcrypt.compare(password || "", user.passwordHash))) {
     req.session.notice = "We could not match that email and password.";

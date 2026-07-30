@@ -16,8 +16,17 @@
       <span>Password</span>
       <input type="password" name="password" minlength="8" required />
     </label>
+    <% if (recaptchaEnabled) { %>
+      <div class="recaptcha-wrap">
+        <div class="g-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
+      </div>
+    <% } %>
     <button class="primary-button" type="submit">Start publishing</button>
   </form>
 </section>
+
+<% if (recaptchaEnabled) { %>
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<% } %>
 
 <%- include("partials/layout-end") %>
