@@ -351,6 +351,10 @@ app.get("/", async (_req, res, next) => {
   }, next);
 });
 
+app.get("/help", async (_req, res, next) => {
+  await renderPage(res, "help", {}, next);
+});
+
 app.get("/mods", async (req, res, next) => {
   const query = (req.query.q || "").trim().toLowerCase();
   const game = (req.query.game || "").trim();

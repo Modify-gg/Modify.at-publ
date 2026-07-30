@@ -216,7 +216,9 @@ h2 {
 .detail-main,
 .comment-card,
 .comment-form,
-.comment-callout {
+.comment-callout,
+.help-card,
+.help-strip {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -263,7 +265,9 @@ h2 {
 .list-stack,
 .mod-grid,
 .auth-shell,
-.comments-section {
+.comments-section,
+.help-grid,
+.help-strip {
   margin-top: 28px;
 }
 
@@ -281,12 +285,37 @@ h2 {
   gap: 18px;
 }
 
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
 .mod-card,
 .empty-state,
 .detail-main,
 .side-panel,
-.auth-card {
+.auth-card,
+.help-card,
+.help-strip {
   padding: 22px;
+}
+
+.help-card p,
+.help-strip p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.help-card strong {
+  color: var(--text);
+}
+
+.help-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
 }
 
 .mod-card h3 {
@@ -514,6 +543,7 @@ label {
   .hero,
   .detail-shell,
   .mod-grid,
+  .help-grid,
   .stats-row,
   .search-bar,
   .admin-grid {
@@ -586,6 +616,8 @@ label {
   .side-panel,
   .auth-card,
   .mod-card,
+  .help-card,
+  .help-strip,
   .empty-state,
   .comment-card,
   .comment-form,
@@ -628,6 +660,7 @@ label {
   .page-head,
   .comment-head,
   .comment-callout,
+  .help-strip,
   .admin-item-head {
     align-items: flex-start;
   }
@@ -699,6 +732,7 @@ label {
   .stats-row,
   .list-stack,
   .mod-grid,
+  .help-grid,
   .auth-shell,
   .comments-section {
     margin-top: 22px;
@@ -785,6 +819,7 @@ label {
   .detail-shell,
   .admin-grid,
   .mod-grid,
+  .help-grid,
   .stats-row,
   .search-bar {
     gap: 12px;
@@ -799,6 +834,8 @@ label {
   .side-panel,
   .auth-card,
   .mod-card,
+  .help-card,
+  .help-strip,
   .empty-state,
   .comment-card,
   .comment-form,
@@ -858,7 +895,8 @@ label {
   .comment-head,
   .comments-heading,
   .section-heading,
-  .page-head {
+  .page-head,
+  .help-strip {
     flex-direction: column;
     align-items: stretch;
   }
