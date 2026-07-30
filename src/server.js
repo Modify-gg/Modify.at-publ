@@ -36,6 +36,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
+app.disable("x-powered-by");
+
 function getSupabaseEnv() {
   const url = (process.env.SUPABASE_URL || "").trim();
   const anonKey = (process.env.SUPABASE_ANON_KEY || "").trim();
@@ -359,8 +361,53 @@ function cookieSession(req, res, next) {
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-app.use("/styles", express.static(path.join(__dirname, "..", "public", "styles")));
-app.use("/uploads", express.static(uploadsDir));
+app.use((req, res, next) => {
+  const scriptSources = [
+    "'self'",
+    "'unsafe-inline'",
+    "https://www.google.com/recaptcha/",
+    "https://www.gstatic.com/recaptcha/",
+    "https://cdn.jsdelivr.net",
+  ].join(" ");
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      `script-src ${scriptSources}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co https://www.google.com/recaptcha/",
+      "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join("; ")
+  );
+
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
+
+  next();
+});
+
+app.use("/styles", express.static(path.join(__dirname, "..", "public", "styles"), { dotfiles: "deny" }));
+app.use("/uploads", express.static(uploadsDir, {
+  dotfiles: "deny",
+  setHeaders(res, filePath) {
+    if (/\.(php|phtml|phar|cgi|pl|py|asp|aspx|jsp|sh|bash|exe|dll|js|html|htm|svg)$/i.test(filePath)) {
+      res.setHeader("Content-Disposition", "attachment");
+      res.setHeader("Content-Type", "application/octet-stream");
+    }
+  },
+}));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(process.env.VERCEL
@@ -727,6 +774,9 @@ app.get("/debug/config", (req, res) => {
     supabaseServerEnabled: isSupabaseEnabled(),
     supabaseBrowserEnabled: Boolean(res.locals.supabaseBrowserConfig),
     googleAuthEnabled: hasGoogleAuth(),
+    recaptchaSiteKey: Boolean(getRecaptchaConfig().siteKey),
+    recaptchaSecretKey: Boolean(getRecaptchaConfig().secretKey),
+    recaptchaEnabled: isRecaptchaEnabled(),
     googleRedirectUri: getGoogleRedirectUri(req),
     hostedWithoutSupabase: isHostedWithoutSupabase(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA || null,

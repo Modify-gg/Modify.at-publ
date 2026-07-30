@@ -1,0 +1,12 @@
+Options -Indexes
+
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+<FilesMatch "\.(php|phtml|phar|cgi|pl|py|asp|aspx|jsp|sh|bash|exe|dll|js|html|htm|svg)$">
+  ForceType application/octet-stream
+  <IfModule mod_headers.c>
+    Header set Content-Disposition "attachment"
+  </IfModule>
+</FilesMatch>
