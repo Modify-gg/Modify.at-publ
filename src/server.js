@@ -627,7 +627,7 @@ app.get("/mods/:slug", async (req, res, next) => {
   await renderPage(res, "mod-detail", { mod, relatedMods }, next);
 });
 
-app.post("/mods/:slug/download", downloadRateLimit, async (req, res, next) => {
+async function handleModDownload(req, res, next) {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   if (!mod) {
@@ -637,7 +637,7 @@ app.post("/mods/:slug/download", downloadRateLimit, async (req, res, next) => {
   const filePath = mod.filePath || mod.fileName;
 
   try {
-    const downloadUrl = await getModDownloadUrl(filePath);
+    const downloadUrl = await getModDownloadUrl(filePath, mod.originalFileName || mod.fileName);
     mod.downloadCount += 1;
     await saveMods(mods);
     return res.redirect(downloadUrl);
@@ -651,7 +651,10 @@ app.post("/mods/:slug/download", downloadRateLimit, async (req, res, next) => {
     req.session.notice = "Could not prepare download. Try uploading this mod again.";
     return res.redirect(`/mods/${mod.slug}`);
   }
-});
+}
+
+app.get("/mods/:slug/download", downloadRateLimit, handleModDownload);
+app.post("/mods/:slug/download", downloadRateLimit, handleModDownload);
 
 app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res) => {
   const mods = await listMods();

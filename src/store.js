@@ -488,12 +488,16 @@ async function deleteModFile(filePath) {
   await supabase.storage.from(bucketName).remove([filePath]);
 }
 
-async function getModDownloadUrl(filePath) {
+async function getModDownloadUrl(filePath, downloadName) {
   if (!supabase) {
     return `/uploads/${filePath}`;
   }
 
-  const { data, error } = await supabase.storage.from(bucketName).createSignedUrl(filePath, 60 * 10);
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .createSignedUrl(filePath, 60 * 10, {
+      download: downloadName || true,
+    });
   if (error) {
     throw error;
   }
