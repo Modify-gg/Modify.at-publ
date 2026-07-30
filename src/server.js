@@ -36,12 +36,57 @@ const app = express();
 const port = process.env.PORT || 3000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const sessionSecret = (process.env.SESSION_SECRET || "").trim() || crypto.randomBytes(32).toString("hex");
+const rateLimitBuckets = new Map();
 
 if (process.env.VERCEL && !(process.env.SESSION_SECRET || "").trim()) {
   throw new Error("SESSION_SECRET must be configured on Vercel.");
 }
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+function clientIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
+    .split(",")[0]
+    .trim();
+}
+
+function rateLimit(name, maxRequests, windowMs) {
+  return (req, res, next) => {
+    const key = `${name}:${clientIp(req)}`;
+    const now = Date.now();
+    const existing = rateLimitBuckets.get(key);
+    const bucket = existing && existing.resetAt > now
+      ? existing
+      : { count: 0, resetAt: now + windowMs };
+
+    bucket.count += 1;
+    rateLimitBuckets.set(key, bucket);
+
+    if (bucket.count > maxRequests) {
+      res.setHeader("Retry-After", Math.ceil((bucket.resetAt - now) / 1000));
+      return res.status(429).send("Too many requests. Try again later.");
+    }
+
+    next();
+  };
+}
+
+const authRateLimit = rateLimit("auth", 12, 15 * 60 * 1000);
+const commentRateLimit = rateLimit("comment", 30, 10 * 60 * 1000);
+const downloadRateLimit = rateLimit("download", 90, 10 * 60 * 1000);
+const uploadRateLimit = rateLimit("upload", 20, 10 * 60 * 1000);
+const adminRateLimit = rateLimit("admin", 60, 10 * 60 * 1000);
+
+const rateLimitCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (bucket.resetAt <= now) {
+      rateLimitBuckets.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
+rateLimitCleanup.unref();
 
 function getSupabaseEnv() {
   const url = (process.env.SUPABASE_URL || "").trim();
@@ -387,6 +432,10 @@ app.use((req, res, next) => {
 
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Origin-Agent-Cluster", "?1");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   res.setHeader(
@@ -578,7 +627,7 @@ app.get("/mods/:slug", async (req, res, next) => {
   await renderPage(res, "mod-detail", { mod, relatedMods }, next);
 });
 
-app.post("/mods/:slug/download", async (req, res, next) => {
+app.post("/mods/:slug/download", downloadRateLimit, async (req, res, next) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   if (!mod) {
@@ -604,7 +653,7 @@ app.post("/mods/:slug/download", async (req, res, next) => {
   }
 });
 
-app.post("/mods/:slug/comments", requireAuth, async (req, res) => {
+app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   const content = (req.body.content || "").trim();
@@ -644,7 +693,7 @@ app.get("/register", async (_req, res, next) => {
   await renderPage(res, "register", {}, next);
 });
 
-app.post("/register", async (req, res) => {
+app.post("/register", authRateLimit, async (req, res) => {
   const { username, email, password } = req.body;
   const normalizedEmail = (email || "").trim().toLowerCase();
   const cleanUsername = (username || "").trim();
@@ -657,6 +706,11 @@ app.post("/register", async (req, res) => {
 
   if (!cleanUsername || !normalizedEmail || !password) {
     req.session.notice = "Fill out every field to create an account.";
+    return res.redirect("/register");
+  }
+
+  if (cleanUsername.length > 32 || normalizedEmail.length > 254 || password.length < 8 || password.length > 200) {
+    req.session.notice = "Use a shorter username or password, and check your email address.";
     return res.redirect("/register");
   }
 
@@ -698,7 +752,7 @@ app.get("/login", async (_req, res, next) => {
   await renderPage(res, "login", {}, next);
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", authRateLimit, async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = (email || "").trim().toLowerCase();
   const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
@@ -825,7 +879,7 @@ app.get("/debug/config", (req, res) => {
   });
 });
 
-app.post("/upload/sign", requireAuth, async (req, res) => {
+app.post("/upload/sign", requireAuth, uploadRateLimit, async (req, res) => {
   if (!isSupabaseEnabled() || !getSupabaseEnv().anonKey) {
     return res.status(400).json({ error: "Supabase uploads are not configured." });
   }
@@ -890,7 +944,7 @@ app.post("/upload/sign", requireAuth, async (req, res) => {
   });
 });
 
-app.post("/upload/complete", requireAuth, async (req, res) => {
+app.post("/upload/complete", requireAuth, uploadRateLimit, async (req, res) => {
   const { title, gameSlug, category, version, summary, description, installInstructions, releaseNotes, uploadToken } = req.body;
   const uploadedFile = verifyPayload(uploadToken);
   const game = await getGameBySlug(gameSlug);
@@ -1101,7 +1155,7 @@ app.get("/admin", requireAdmin, async (req, res, next) => {
   }, next);
 });
 
-app.post("/admin/games", requireAdmin, async (req, res) => {
+app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
   const name = (req.body.name || "").trim();
   if (!name) {
     req.session.notice = "Game name is required.";
@@ -1127,7 +1181,7 @@ app.post("/admin/games", requireAdmin, async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/games/:slug/categories", requireAdmin, async (req, res) => {
+app.post("/admin/games/:slug/categories", requireAdmin, adminRateLimit, async (req, res) => {
   const categoryName = (req.body.categoryName || "").trim();
   const games = await listGames();
   const game = games.find((entry) => entry.slug === req.params.slug);
@@ -1153,7 +1207,7 @@ app.post("/admin/games/:slug/categories", requireAdmin, async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/verify", requireAdmin, async (req, res) => {
+app.post("/admin/mods/:id/verify", requireAdmin, adminRateLimit, async (req, res) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
@@ -1167,7 +1221,7 @@ app.post("/admin/mods/:id/verify", requireAdmin, async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/unverify", requireAdmin, async (req, res) => {
+app.post("/admin/mods/:id/unverify", requireAdmin, adminRateLimit, async (req, res) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
@@ -1181,7 +1235,7 @@ app.post("/admin/mods/:id/unverify", requireAdmin, async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/mods/:id/delete", requireAdmin, async (req, res) => {
+app.post("/admin/mods/:id/delete", requireAdmin, adminRateLimit, async (req, res) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.id === req.params.id);
   if (!mod) {
@@ -1195,7 +1249,7 @@ app.post("/admin/mods/:id/delete", requireAdmin, async (req, res) => {
   res.redirect("/admin");
 });
 
-app.post("/admin/users/:id/delete", requireAdmin, async (req, res) => {
+app.post("/admin/users/:id/delete", requireAdmin, adminRateLimit, async (req, res) => {
   if (req.params.id === res.locals.currentUser.id) {
     req.session.notice = "You cannot delete the admin account you are using.";
     return res.redirect("/admin");
