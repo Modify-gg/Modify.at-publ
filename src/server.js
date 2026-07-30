@@ -150,7 +150,7 @@ function isRecaptchaEnabled() {
   return Boolean(siteKey && secretKey);
 }
 
-async function verifyRecaptcha(req) {
+async function verifyRecaptcha(req, expectedAction) {
   if (!isRecaptchaEnabled()) {
     return true;
   }
@@ -178,7 +178,19 @@ async function verifyRecaptcha(req) {
     }
 
     const result = await response.json();
-    return Boolean(result.success);
+    if (!result.success) {
+      return false;
+    }
+
+    if (result.action && result.action !== expectedAction) {
+      return false;
+    }
+
+    if (typeof result.score === "number" && result.score < 0.3) {
+      return false;
+    }
+
+    return true;
   } catch (error) {
     console.error("reCAPTCHA verification failed:", error.message);
     return false;
@@ -367,6 +379,7 @@ app.use((req, res, next) => {
     "'unsafe-inline'",
     "https://www.google.com/recaptcha/",
     "https://www.gstatic.com/recaptcha/",
+    "https://www.recaptcha.net/recaptcha/",
     "https://cdn.jsdelivr.net",
   ].join(" ");
 
@@ -382,8 +395,8 @@ app.use((req, res, next) => {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co https://www.google.com/recaptcha/",
-      "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
+      "connect-src 'self' https://*.supabase.co https://www.google.com https://www.gstatic.com https://www.recaptcha.net",
+      "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -613,7 +626,7 @@ app.post("/register", async (req, res) => {
   const cleanUsername = (username || "").trim();
   const users = await listUsers();
 
-  if (!(await verifyRecaptcha(req))) {
+  if (!(await verifyRecaptcha(req, "register"))) {
     req.session.notice = "Please finish the reCAPTCHA check before creating an account.";
     return res.redirect("/register");
   }
@@ -666,7 +679,7 @@ app.post("/login", async (req, res) => {
   const normalizedEmail = (email || "").trim().toLowerCase();
   const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
 
-  if (!(await verifyRecaptcha(req))) {
+  if (!(await verifyRecaptcha(req, "login"))) {
     req.session.notice = "Please finish the reCAPTCHA check before signing in.";
     return res.redirect("/login");
   }
