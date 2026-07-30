@@ -150,7 +150,7 @@ function isRecaptchaEnabled() {
   return Boolean(siteKey && secretKey);
 }
 
-async function verifyRecaptcha(req) {
+async function verifyRecaptcha(req, expectedAction) {
   if (!isRecaptchaEnabled()) {
     return true;
   }
@@ -179,6 +179,14 @@ async function verifyRecaptcha(req) {
 
     const result = await response.json();
     if (!result.success) {
+      return false;
+    }
+
+    if (result.action && result.action !== expectedAction) {
+      return false;
+    }
+
+    if (typeof result.score === "number" && result.score < 0.3) {
       return false;
     }
 
@@ -618,7 +626,7 @@ app.post("/register", async (req, res) => {
   const cleanUsername = (username || "").trim();
   const users = await listUsers();
 
-  if (!(await verifyRecaptcha(req))) {
+  if (!(await verifyRecaptcha(req, "register"))) {
     req.session.notice = "Please finish the reCAPTCHA check before creating an account.";
     return res.redirect("/register");
   }
@@ -671,7 +679,7 @@ app.post("/login", async (req, res) => {
   const normalizedEmail = (email || "").trim().toLowerCase();
   const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
 
-  if (!(await verifyRecaptcha(req))) {
+  if (!(await verifyRecaptcha(req, "login"))) {
     req.session.notice = "Please finish the reCAPTCHA check before signing in.";
     return res.redirect("/login");
   }
