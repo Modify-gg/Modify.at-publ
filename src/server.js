@@ -292,16 +292,30 @@ app.get("/mods/:slug", async (req, res, next) => {
   await renderPage(res, "mod-detail", { mod, relatedMods }, next);
 });
 
-app.post("/mods/:slug/download", async (req, res) => {
+app.post("/mods/:slug/download", async (req, res, next) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
   if (!mod) {
     return res.status(404).render("not-found", { message: "That mod does not exist yet." });
   }
 
-  mod.downloadCount += 1;
-  await saveMods(mods);
-  res.redirect(await getModDownloadUrl(mod.filePath || mod.fileName));
+  const filePath = mod.filePath || mod.fileName;
+
+  try {
+    const downloadUrl = await getModDownloadUrl(filePath);
+    mod.downloadCount += 1;
+    await saveMods(mods);
+    return res.redirect(downloadUrl);
+  } catch (error) {
+    console.error("Download link failed", {
+      modSlug: mod.slug,
+      filePath,
+      message: error.message,
+      status: error.status,
+    });
+    req.session.notice = "Could not prepare download. Try uploading this mod again.";
+    return res.redirect(`/mods/${mod.slug}`);
+  }
 });
 
 app.post("/mods/:slug/comments", requireAuth, async (req, res) => {
