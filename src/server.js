@@ -150,7 +150,7 @@ function isRecaptchaEnabled() {
   return Boolean(siteKey && secretKey);
 }
 
-async function verifyRecaptcha(req, expectedAction) {
+async function verifyRecaptcha(req) {
   if (!isRecaptchaEnabled()) {
     return true;
   }
@@ -179,14 +179,6 @@ async function verifyRecaptcha(req, expectedAction) {
 
     const result = await response.json();
     if (!result.success) {
-      return false;
-    }
-
-    if (result.action && result.action !== expectedAction) {
-      return false;
-    }
-
-    if (typeof result.score === "number" && result.score < 0.3) {
       return false;
     }
 

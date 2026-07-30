@@ -1,7 +1,7 @@
 <%- include("partials/layout-start", { title: "Sign in" }) %>
 
 <section class="auth-shell">
-  <form class="auth-card recaptcha-form" action="/login" method="post" data-recaptcha-action="login">
+  <form class="auth-card" action="/login" method="post">
     <p class="eyebrow">welcome back</p>
     <h1>Sign in</h1>
     <label>
@@ -13,62 +13,14 @@
       <input type="password" name="password" required />
     </label>
     <% if (recaptchaEnabled) { %>
-      <label class="human-check">
-        <input type="checkbox" name="human-check" />
-        <span>I'm not a robot</span>
-      </label>
-      <input type="hidden" name="g-recaptcha-response" />
+      <div class="g-recaptcha auth-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
     <% } %>
     <button class="primary-button" type="submit">Enter modify.at</button>
   </form>
 </section>
 
 <% if (recaptchaEnabled) { %>
-  <script src="https://www.google.com/recaptcha/api.js?render=<%= recaptchaSiteKey %>" async defer></script>
-  <script>
-    const recaptchaSiteKey = "<%= recaptchaSiteKey %>";
-    document.querySelectorAll(".recaptcha-form").forEach((form) => {
-      const checkbox = form.querySelector("input[name='human-check']");
-      const tokenInput = form.querySelector("input[name='g-recaptcha-response']");
-      const submitButton = form.querySelector("button[type='submit']");
-
-      checkbox.addEventListener("change", () => {
-        if (!checkbox.checked) {
-          tokenInput.value = "";
-          form.dataset.recaptchaReady = "false";
-          submitButton.disabled = false;
-          return;
-        }
-
-        submitButton.disabled = true;
-        if (typeof grecaptcha === "undefined") {
-          checkbox.checked = false;
-          submitButton.disabled = false;
-          return;
-        }
-
-        grecaptcha.ready(() => {
-          grecaptcha.execute(recaptchaSiteKey, { action: form.dataset.recaptchaAction })
-            .then((token) => {
-              tokenInput.value = token;
-              form.dataset.recaptchaReady = "true";
-              submitButton.disabled = false;
-            })
-            .catch(() => {
-              checkbox.checked = false;
-              submitButton.disabled = false;
-            });
-        });
-      });
-
-      form.addEventListener("submit", (event) => {
-        if (form.dataset.recaptchaReady !== "true") {
-          event.preventDefault();
-          checkbox.focus();
-        }
-      });
-    });
-  </script>
+  <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 <% } %>
 
 <%- include("partials/layout-end") %>
