@@ -40,7 +40,7 @@
     <% if (hostedWithoutSupabase) { %>
       <p class="helper-copy">Uploads are waiting for Supabase environment variables on Vercel.</p>
     <% } %>
-    <button class="primary-button" type="submit">Publish release</button>
+    <button class="primary-button" type="submit" <%= hostedWithoutSupabase ? "disabled" : "" %>>Publish release</button>
   </form>
 </section>
 

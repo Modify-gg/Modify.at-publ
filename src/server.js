@@ -471,6 +471,24 @@ app.get("/upload", requireAuth, async (_req, res, next) => {
   await renderPage(res, "upload", {}, next);
 });
 
+app.get("/debug/config", (req, res) => {
+  if (!res.locals.currentUser || res.locals.currentUser.role !== "admin") {
+    return res.status(404).render("not-found", { message: "That page could not be found." });
+  }
+
+  res.json({
+    vercel: Boolean(process.env.VERCEL),
+    supabaseUrl: Boolean(process.env.SUPABASE_URL),
+    supabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+    supabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || null,
+    supabaseServerEnabled: isSupabaseEnabled(),
+    supabaseBrowserEnabled: Boolean(res.locals.supabaseBrowserConfig),
+    hostedWithoutSupabase: isHostedWithoutSupabase(),
+    commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
+  });
+});
+
 app.post("/upload/sign", requireAuth, async (req, res) => {
   if (!isSupabaseEnabled() || !process.env.SUPABASE_ANON_KEY) {
     return res.status(400).json({ error: "Supabase uploads are not configured." });
