@@ -72,24 +72,28 @@ function signPayload(payload) {
 }
 
 function verifyPayload(token) {
-  const [body, signature] = String(token || "").split(".");
-  if (!body || !signature) {
+  try {
+    const [body, signature] = String(token || "").split(".");
+    if (!body || !signature) {
+      return null;
+    }
+
+    const expected = crypto
+      .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
+      .update(body)
+      .digest("base64url");
+
+    if (
+      signature.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+    ) {
+      return null;
+    }
+
+    return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  } catch (_error) {
     return null;
   }
-
-  const expected = crypto
-    .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
-    .update(body)
-    .digest("base64url");
-
-  if (
-    signature.length !== expected.length ||
-    !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-  ) {
-    return null;
-  }
-
-  return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
 }
 
 async function getGameBySlug(slug) {
@@ -163,6 +167,79 @@ const upload = multer({
   limits: { fileSize: 1024 * 1024 * 250 },
 });
 
+function appendSetCookie(res, cookie) {
+  const existing = res.getHeader("Set-Cookie");
+  if (!existing) {
+    res.setHeader("Set-Cookie", cookie);
+  } else if (Array.isArray(existing)) {
+    res.setHeader("Set-Cookie", [...existing, cookie]);
+  } else {
+    res.setHeader("Set-Cookie", [existing, cookie]);
+  }
+}
+
+function serializeSessionCookie(value, options = {}) {
+  const parts = [
+    `modify_at_session=${value}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=604800",
+  ];
+
+  if (process.env.VERCEL) {
+    parts.push("Secure");
+  }
+
+  if (options.expires) {
+    parts.push(`Expires=${options.expires.toUTCString()}`);
+    parts.push("Max-Age=0");
+  }
+
+  return parts.join("; ");
+}
+
+function parseCookies(cookieHeader) {
+  return String(cookieHeader || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((cookies, part) => {
+      const separator = part.indexOf("=");
+      if (separator === -1) {
+        return cookies;
+      }
+      cookies[part.slice(0, separator)] = decodeURIComponent(part.slice(separator + 1));
+      return cookies;
+    }, {});
+}
+
+function cookieSession(req, res, next) {
+  const cookies = parseCookies(req.headers.cookie);
+  const restored = verifyPayload(cookies.modify_at_session) || {};
+  let destroyed = false;
+
+  req.session = { ...restored };
+  req.session.destroy = (callback) => {
+    destroyed = true;
+    appendSetCookie(res, serializeSessionCookie("", { expires: new Date(0) }));
+    callback();
+  };
+
+  const writeHead = res.writeHead.bind(res);
+  res.writeHead = (...args) => {
+    if (!destroyed) {
+      const sessionData = Object.fromEntries(
+        Object.entries(req.session).filter(([, value]) => typeof value !== "function")
+      );
+      appendSetCookie(res, serializeSessionCookie(signPayload(sessionData)));
+    }
+    return writeHead(...args);
+  };
+
+  next();
+}
+
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
@@ -170,16 +247,16 @@ app.use("/styles", express.static(path.join(__dirname, "..", "public", "styles")
 app.use("/uploads", express.static(uploadsDir));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "modify-at-dev-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24 * 7,
-    },
-  })
-);
+app.use(process.env.VERCEL
+  ? cookieSession
+  : session({
+      secret: process.env.SESSION_SECRET || "modify-at-dev-secret",
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+      },
+    }));
 
 app.use(async (req, res, next) => {
   await storeReady;
@@ -204,6 +281,9 @@ app.use(async (req, res, next) => {
 
 function requireAuth(req, res, next) {
   if (!res.locals.currentUser) {
+    if (req.accepts(["html", "json"]) === "json") {
+      return res.status(401).json({ error: "Sign in again, then try uploading." });
+    }
     req.session.notice = "Sign in to access that page.";
     return res.redirect("/login");
   }

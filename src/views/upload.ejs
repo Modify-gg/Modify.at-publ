@@ -87,7 +87,11 @@
       try {
         const signResponse = await fetch("/upload/sign", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          credentials: "same-origin",
+          headers: {
+            "accept": "application/json",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             originalFileName: file.name,
             fileSize: file.size,
@@ -95,8 +99,16 @@
           }),
         });
 
+        const signContentType = signResponse.headers.get("content-type") || "";
         if (!signResponse.ok) {
-          throw new Error("Could not prepare the upload.");
+          const errorBody = signContentType.includes("application/json")
+            ? await signResponse.json()
+            : null;
+          throw new Error(errorBody && errorBody.error ? errorBody.error : "Could not prepare the upload.");
+        }
+
+        if (!signContentType.includes("application/json")) {
+          throw new Error("Sign in again, then try uploading.");
         }
 
         const signedUpload = await signResponse.json();
@@ -123,9 +135,14 @@
 
         const completeResponse = await fetch("/upload/complete", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: completeBody,
         });
+
+        if (!completeResponse.ok) {
+          throw new Error("Could not publish the mod.");
+        }
 
         window.location.href = completeResponse.url;
       } catch (error) {
