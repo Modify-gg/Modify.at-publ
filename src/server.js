@@ -35,6 +35,11 @@ const storeReady = initializeStore();
 const app = express();
 const port = process.env.PORT || 3000;
 const uploadsDir = path.join(__dirname, "..", "uploads");
+const sessionSecret = (process.env.SESSION_SECRET || "").trim() || crypto.randomBytes(32).toString("hex");
+
+if (process.env.VERCEL && !(process.env.SESSION_SECRET || "").trim()) {
+  throw new Error("SESSION_SECRET must be configured on Vercel.");
+}
 
 app.disable("x-powered-by");
 
@@ -69,7 +74,7 @@ function makeId(prefix) {
 function signPayload(payload) {
   const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = crypto
-    .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
+    .createHmac("sha256", sessionSecret)
     .update(body)
     .digest("base64url");
   return `${body}.${signature}`;
@@ -83,7 +88,7 @@ function verifyPayload(token) {
     }
 
     const expected = crypto
-      .createHmac("sha256", process.env.SESSION_SECRET || "modify-at-dev-secret")
+      .createHmac("sha256", sessionSecret)
       .update(body)
       .digest("base64url");
 
@@ -256,7 +261,12 @@ async function exchangeGoogleCode(code, req) {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 1024 * 1024 * 250 },
+  limits: {
+    fileSize: 1024 * 1024 * 250,
+    files: 7,
+    fields: 20,
+    parts: 30,
+  },
 });
 
 const imageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -413,18 +423,40 @@ app.use("/uploads", express.static(uploadsDir, {
     }
   },
 }));
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: false, limit: "100kb", parameterLimit: 50 }));
 app.use(process.env.VERCEL
   ? cookieSession
   : session({
-      secret: process.env.SESSION_SECRET || "modify-at-dev-secret",
+      secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
         maxAge: 1000 * 60 * 60 * 24 * 7,
       },
     }));
+
+function isSameOriginRequest(req) {
+  const requestHost = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return new URL(origin).host.toLowerCase() === requestHost;
+  } catch (_error) {
+    return false;
+  }
+}
+
+app.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method) || isSameOriginRequest(req)) {
+    return next();
+  }
+
+  res.status(403).send("Cross-origin request blocked.");
+});
 
 app.use(async (req, res, next) => {
   await storeReady;
@@ -696,13 +728,18 @@ app.get("/auth/google", (req, res) => {
 });
 
 app.get("/auth/google/callback", async (req, res) => {
-  if (!req.query.code || !req.query.state || req.query.state !== req.session.googleState) {
+  const expectedState = req.session.googleState;
+  delete req.session.googleState;
+  if (!req.query.code || !req.query.state || req.query.state !== expectedState) {
     req.session.notice = "Google sign-in could not be verified.";
     return res.redirect("/login");
   }
 
   try {
     const googleUser = await exchangeGoogleCode(req.query.code, req);
+    if (!googleUser.email || googleUser.email_verified !== true) {
+      throw new Error("Google account email is not verified.");
+    }
     const users = await listUsers();
     let user = users.find((entry) => entry.email === String(googleUser.email || "").toLowerCase());
 
@@ -928,7 +965,14 @@ app.post("/upload/complete", requireAuth, async (req, res) => {
   res.redirect(`/mods/${slug}`);
 });
 
-app.post("/upload", requireAuth, upload.fields([
+function rejectLegacyUploadOnVercel(_req, res, next) {
+  if (process.env.VERCEL) {
+    return res.status(410).json({ error: "Use the signed upload flow." });
+  }
+  next();
+}
+
+app.post("/upload", requireAuth, rejectLegacyUploadOnVercel, upload.fields([
   { name: "modFile", maxCount: 1 },
   { name: "iconFile", maxCount: 1 },
   { name: "galleryFiles", maxCount: 6 },

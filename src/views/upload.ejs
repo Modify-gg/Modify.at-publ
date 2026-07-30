@@ -63,16 +63,19 @@
 </section>
 
 <script>
-  const gameCatalog = <%- JSON.stringify(allGames) %>;
+  const gameCatalog = <%- JSON.stringify(allGames).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026") %>;
   const gameSelect = document.getElementById("gameSlug");
   const categorySelect = document.getElementById("category");
 
   function renderCategories() {
     const currentGame = gameCatalog.find((entry) => entry.slug === gameSelect.value);
     const categories = currentGame && currentGame.categories.length ? currentGame.categories : ["General"];
-    categorySelect.innerHTML = categories
-      .map((category) => `<option value="${category}">${category}</option>`)
-      .join("");
+    categorySelect.replaceChildren(...categories.map((category) => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      return option;
+    }));
   }
 
   gameSelect.addEventListener("change", renderCategories);

@@ -10,10 +10,14 @@ const gamesFile = path.join(dataDir, "games.json");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
 const adminSeed = {
-  username: "UnknownTheReal1",
-  email: "edricgarcia2020@yahoo.com",
-  password: "Octubre2020",
+  username: (process.env.ADMIN_USERNAME || "").trim(),
+  email: (process.env.ADMIN_EMAIL || "").trim(),
+  password: process.env.ADMIN_PASSWORD || "",
 };
+
+function hasAdminSeed() {
+  return Boolean(adminSeed.username && adminSeed.email && adminSeed.password);
+}
 
 const defaultGames = [
   {
@@ -280,10 +284,10 @@ function migrateUsers(users) {
       changed = true;
     }
 
-    if (
+    if (hasAdminSeed() && (
       nextUser.username === adminSeed.username ||
       nextUser.email.toLowerCase() === adminSeed.email.toLowerCase()
-    ) {
+    )) {
       if (nextUser.role !== "admin") {
         nextUser.role = "admin";
         changed = true;
@@ -336,6 +340,10 @@ function migrateMods(mods, games) {
 }
 
 async function ensureAdminUser(users) {
+  if (!hasAdminSeed()) {
+    return false;
+  }
+
   const existing = users.find(
     (user) =>
       user.username === adminSeed.username ||

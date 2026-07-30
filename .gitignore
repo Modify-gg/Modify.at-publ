@@ -4,3 +4,6 @@
 .npm-cache/
 node_modules/
 .vercel/
+data/*.json
+uploads/*
+!uploads/.htaccess
