@@ -17,9 +17,10 @@
       <input type="password" name="password" minlength="8" required />
     </label>
     <button class="primary-button" type="submit">Start publishing</button>
-    <a class="google-button" href="/auth/google">Sign up with Google</a>
-    <% if (!googleAuthEnabled) { %>
-      <p class="helper-copy">Google sign-in is wired in, but it still needs Google app keys in `.env`.</p>
+    <% if (googleAuthEnabled) { %>
+      <a class="google-button" href="/auth/google">Sign up with Google</a>
+    <% } else { %>
+      <p class="helper-copy">Google sign-in needs Google app keys in Vercel.</p>
     <% } %>
   </form>
 </section>

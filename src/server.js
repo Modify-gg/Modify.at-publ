@@ -112,9 +112,28 @@ async function normalizeMod(mod) {
   };
 }
 
+function hasGoogleAuth() {
+  return Boolean((process.env.GOOGLE_CLIENT_ID || "").trim() && (process.env.GOOGLE_CLIENT_SECRET || "").trim());
+}
+
+function getBaseUrl(req) {
+  const configuredUrl = (process.env.PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || `localhost:${port}`;
+  return `${protocol}://${host}`;
+}
+
+function getGoogleRedirectUri(req) {
+  return (process.env.GOOGLE_REDIRECT_URI || "").trim() || `${getBaseUrl(req)}/auth/google/callback`;
+}
+
 function createGoogleAuthUrl(req) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${port}/auth/google/callback`;
+  const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  const redirectUri = getGoogleRedirectUri(req);
   const state = crypto.randomBytes(16).toString("hex");
   req.session.googleState = state;
 
@@ -128,8 +147,8 @@ function createGoogleAuthUrl(req) {
   return url.toString();
 }
 
-async function exchangeGoogleCode(code) {
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${port}/auth/google/callback`;
+async function exchangeGoogleCode(code, req) {
+  const redirectUri = getGoogleRedirectUri(req);
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: {
@@ -137,8 +156,8 @@ async function exchangeGoogleCode(code) {
     },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      client_id: (process.env.GOOGLE_CLIENT_ID || "").trim(),
+      client_secret: (process.env.GOOGLE_CLIENT_SECRET || "").trim(),
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
@@ -264,7 +283,7 @@ app.use(async (req, res, next) => {
   const currentUser = users.find((user) => user.id === req.session.userId) || null;
   res.locals.currentUser = currentUser;
   res.locals.notice = req.session.notice || null;
-  res.locals.googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  res.locals.googleAuthEnabled = hasGoogleAuth();
   const supabaseEnv = getSupabaseEnv();
   res.locals.supabaseBrowserConfig =
     isSupabaseEnabled() && supabaseEnv.anonKey
@@ -503,8 +522,8 @@ app.post("/login", async (req, res) => {
 });
 
 app.get("/auth/google", (req, res) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    req.session.notice = "Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.";
+  if (!hasGoogleAuth()) {
+    req.session.notice = "Google sign-in needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel.";
     return res.redirect("/login");
   }
 
@@ -518,7 +537,7 @@ app.get("/auth/google/callback", async (req, res) => {
   }
 
   try {
-    const googleUser = await exchangeGoogleCode(req.query.code);
+    const googleUser = await exchangeGoogleCode(req.query.code, req);
     const users = await listUsers();
     let user = users.find((entry) => entry.email === String(googleUser.email || "").toLowerCase());
 
@@ -594,6 +613,8 @@ app.get("/debug/config", (req, res) => {
     supabaseStorageBucket: supabaseEnv.bucket,
     supabaseServerEnabled: isSupabaseEnabled(),
     supabaseBrowserEnabled: Boolean(res.locals.supabaseBrowserConfig),
+    googleAuthEnabled: hasGoogleAuth(),
+    googleRedirectUri: getGoogleRedirectUri(req),
     hostedWithoutSupabase: isHostedWithoutSupabase(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
   });
