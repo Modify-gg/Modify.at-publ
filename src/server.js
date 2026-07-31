@@ -675,6 +675,14 @@ app.get("/help", async (_req, res, next) => {
   await renderPage(res, "help", {}, next);
 });
 
+app.get("/terms", async (_req, res, next) => {
+  await renderPage(res, "terms", {}, next);
+});
+
+app.get("/privacy", async (_req, res, next) => {
+  await renderPage(res, "privacy", {}, next);
+});
+
 app.get("/ads.txt", (_req, res) => {
   res.type("text/plain").send("google.com, pub-7721626603982200, DIRECT, f08c47fec0942fa0\n");
 });
