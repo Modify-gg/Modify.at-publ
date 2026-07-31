@@ -81,7 +81,7 @@
   <div class="mod-grid">
     <% if (featuredMods.length) { %>
       <% featuredMods.forEach((mod) => { %>
-        <article class="mod-card">
+        <article class="mod-card mod-card-link" data-href="/mods/<%= mod.slug %>" tabindex="0" role="link">
           <a class="mod-icon" href="/mods/<%= mod.slug %>" aria-label="<%= mod.title %>">
             <% if (mod.iconUrl) { %>
               <img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" />

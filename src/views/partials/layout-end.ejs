@@ -3,5 +3,19 @@
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
     </footer>
+    <script>
+      document.querySelectorAll(".mod-card-link[data-href]").forEach((card) => {
+        card.addEventListener("click", (event) => {
+          if (event.target.closest("a, button, form, input, textarea, select")) return;
+          window.location.href = card.dataset.href;
+        });
+        card.addEventListener("keydown", (event) => {
+          if ((event.key === "Enter" || event.key === " ") && !event.target.closest("a, button, form, input, textarea, select")) {
+            event.preventDefault();
+            window.location.href = card.dataset.href;
+          }
+        });
+      });
+    </script>
   </body>
 </html>

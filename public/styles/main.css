@@ -323,6 +323,15 @@ h2 {
   margin-bottom: 12px;
 }
 
+.mod-card-link {
+  cursor: pointer;
+}
+
+.mod-card-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .mod-icon,
 .list-icon,
 .detail-icon {
