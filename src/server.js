@@ -663,9 +663,24 @@ app.get("/", async (_req, res, next) => {
   const mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => b.downloadCount - a.downloadCount);
   const newestMods = [...mods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
   const featuredMods = mods.slice(0, 3);
+  const games = await listGames();
+  const gameDirectory = games
+    .map((game) => {
+      const gameMods = mods.filter((mod) => mod.gameSlug === game.slug);
+      const latestMod = [...gameMods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      return {
+        ...game,
+        modCount: gameMods.length,
+        safeCount: gameMods.filter((mod) => mod.isSafe).length,
+        coverUrl: latestMod ? latestMod.iconUrl : null,
+        latestTitle: latestMod ? latestMod.title : null,
+      };
+    })
+    .sort((a, b) => b.modCount - a.modCount || a.name.localeCompare(b.name));
   await renderPage(res, "home", {
     featuredMods,
     newestMods,
+    gameDirectory,
     totalMods: mods.length,
     totalCreators: new Set(mods.map((mod) => mod.authorId)).size,
   }, next);

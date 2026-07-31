@@ -2,15 +2,15 @@
 
 <section class="hero">
   <div class="hero-copy">
-    <p class="eyebrow">mod discovery and creator tools</p>
-    <h1>Ship mods people actually want to install.</h1>
+    <p class="eyebrow">a multi-game mod hub</p>
+    <h1>Find mods for your game.</h1>
     <p class="hero-text">
-      modify.at is a publishing hub for creators who build smarter patches, cleaner overhauls, and sharp utility drops for the games people keep coming back to.
+      Browse community-made mods for the games you play, or publish your own release with a creator page, version history, and clear safety status.
     </p>
     <div class="hero-actions">
-      <a class="primary-link" href="/mods">Explore mods</a>
+      <a class="primary-link" href="#game-directory">Browse games</a>
       <a class="secondary-link" href="/upload">Publish your mod</a>
-      <a class="secondary-link" href="/help">How it works</a>
+      <a class="secondary-link" href="/help">Learn more</a>
     </div>
   </div>
   <div class="hero-panel">
@@ -23,10 +23,54 @@
       <strong><%= totalCreators %></strong>
     </div>
     <div>
-      <span>Focus</span>
-      <strong>Quality-first releases</strong>
+      <span>Built for</span>
+      <strong>More than one game</strong>
     </div>
   </div>
+</section>
+
+<section class="section-block" id="game-directory">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">choose your starting point</p>
+      <h2>Browse by game</h2>
+    </div>
+    <a href="/mods">View all mods</a>
+  </div>
+  <div class="game-grid">
+    <% if (gameDirectory.length) { %>
+      <% gameDirectory.forEach((game) => { %>
+        <a class="game-card" href="/mods?game=<%= encodeURIComponent(game.slug) %>">
+          <div class="game-card-art">
+            <% if (game.coverUrl) { %>
+              <img src="<%= game.coverUrl %>" alt="" />
+            <% } else { %>
+              <span><%= game.name.slice(0, 1).toUpperCase() %></span>
+            <% } %>
+          </div>
+          <div class="game-card-copy">
+            <div class="game-card-head">
+              <h3><%= game.name %></h3>
+              <span aria-hidden="true">&#8594;</span>
+            </div>
+            <p><%= game.modCount %> mod<%= game.modCount === 1 ? "" : "s" %> available</p>
+            <% if (game.latestTitle) { %><small>Latest: <%= game.latestTitle %></small><% } else { %><small>Be the first creator here</small><% } %>
+          </div>
+        </a>
+      <% }) %>
+    <% } else { %>
+      <article class="empty-state"><h3>No games yet</h3><p>The catalog is ready for its first game.</p></article>
+    <% } %>
+  </div>
+</section>
+
+<section class="section-block creator-callout">
+  <div>
+    <p class="eyebrow">for creators</p>
+    <h2>A straightforward home for your releases.</h2>
+    <p class="hero-text">Publish mods for games that do not have a strong central mod hub yet. Every release gets a creator profile, download count, version history, gallery, and moderation status.</p>
+  </div>
+  <a class="primary-link" href="/register">Create a creator account</a>
 </section>
 
 <section class="section-block">
