@@ -37,7 +37,7 @@
   </div>
   <div class="game-grid">
     <% gameDirectory.forEach((gameEntry) => { %>
-      <a class="game-card" href="/mods?game=<%= encodeURIComponent(gameEntry.slug) %>">
+      <a class="game-card" href="/games/<%= encodeURIComponent(gameEntry.slug) %>">
         <div class="game-card-art">
           <% if (gameEntry.iconUrl) { %>
             <img src="<%= gameEntry.iconUrl %>" alt="" />

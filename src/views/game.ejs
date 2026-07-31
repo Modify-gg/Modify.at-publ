@@ -1,0 +1,46 @@
+<%- include("partials/layout-start", { title: game.name }) %>
+
+<section class="game-hero">
+  <div class="game-hero-art">
+    <% if (game.iconUrl) { %>
+      <img src="<%= game.iconUrl %>" alt="" />
+    <% } else { %>
+      <span><%= game.name.slice(0, 1).toUpperCase() %></span>
+    <% } %>
+  </div>
+  <div>
+    <p class="eyebrow">game hub</p>
+    <h1><%= game.name %></h1>
+    <p class="hero-text"><%= mods.length %> mod<%= mods.length === 1 ? "" : "s" %> available for this game.</p>
+    <% if (game.categories.length) { %>
+      <div class="tag-row"><% game.categories.forEach((category) => { %><a href="/mods?game=<%= encodeURIComponent(game.slug) %>&category=<%= encodeURIComponent(category) %>"><%= category %></a><% }) %></div>
+    <% } %>
+  </div>
+</section>
+
+<section class="section-block">
+  <div class="section-heading">
+    <div><p class="eyebrow">community releases</p><h2>Mods for <%= game.name %></h2></div>
+    <a class="secondary-link" href="/mods?game=<%= encodeURIComponent(game.slug) %>">Open filters</a>
+  </div>
+  <div class="mod-grid">
+    <% if (mods.length) { %>
+      <% mods.forEach((mod) => { %>
+        <article class="mod-card mod-card-link" data-href="/mods/<%= mod.slug %>" tabindex="0" role="link">
+          <a class="mod-icon" href="/mods/<%= mod.slug %>" aria-label="<%= mod.title %>">
+            <% if (mod.iconUrl) { %><img src="<%= mod.iconUrl %>" alt="<%= mod.title %> icon" /><% } else { %><span><%= mod.title.slice(0, 1).toUpperCase() %></span><% } %>
+          </a>
+          <div class="mod-meta-line"><span><%= mod.category %></span><span>v<%= mod.version %></span></div>
+          <div class="badge-row"><span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span></div>
+          <h3><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></h3>
+          <p><%= mod.summary %></p>
+          <div class="mod-footer"><span>by <%= mod.authorName %></span><span><%= mod.downloadCount %> downloads</span></div>
+        </article>
+      <% }) %>
+    <% } else { %>
+      <article class="empty-state"><h3>No mods yet</h3><p>This game is ready for its first upload.</p><a class="primary-link" href="/upload">Upload a mod</a></article>
+    <% } %>
+  </div>
+</section>
+
+<%- include("partials/layout-end") %>

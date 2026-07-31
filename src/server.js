@@ -841,6 +841,19 @@ app.get("/mods", async (req, res, next) => {
   }, next);
 });
 
+app.get("/games/:slug", async (req, res, next) => {
+  const slug = stringInput(req.params.slug, 80);
+  const rawGame = (await listGames()).find((entry) => entry.slug === slug);
+  if (!rawGame) {
+    return res.status(404).render("not-found", { message: "That game does not exist yet." });
+  }
+
+  const game = await normalizeGame(rawGame);
+  const mods = (await Promise.all((await listMods()).filter((entry) => entry.gameSlug === slug).map(normalizeMod)))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  await renderPage(res, "game", { game, mods }, next);
+});
+
 app.get("/creators/:username", async (req, res, next) => {
   const users = await listUsers();
   const username = stringInput(req.params.username, 32);
