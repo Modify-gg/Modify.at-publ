@@ -76,10 +76,15 @@ function encodeBase64(value) {
 }
 
 function buildMessage({ from, to, subject, text }) {
+  const messageDomain = from.split("@")[1] || "modify.at";
   return [
     `From: ${from}`,
     `To: ${to}`,
+    `Reply-To: ${from}`,
     `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@${messageDomain}>`,
+    "X-Mailer: modify.at",
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="utf-8"',
     "Content-Transfer-Encoding: 7bit",

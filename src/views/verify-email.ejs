@@ -5,7 +5,7 @@
     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
     <p class="eyebrow">email verification</p>
     <h1>Enter your code</h1>
-    <p class="hero-text">We sent a six-digit code to your email address.</p>
+    <p class="hero-text">We sent a six-digit code to <%= pendingEmail %>. Check spam or promotions if it is not in your inbox.</p>
     <label>
       <span>Verification code</span>
       <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" required />

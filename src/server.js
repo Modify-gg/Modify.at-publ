@@ -135,6 +135,12 @@ function hashEmailCode(id, purpose, code) {
   return crypto.createHmac("sha256", sessionSecret).update(`${id}:${purpose}:${code}`).digest("hex");
 }
 
+function maskEmail(email) {
+  const [local, domain] = String(email || "").split("@");
+  if (!local || !domain) return "your email address";
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
 async function issueEmailChallenge({ email, purpose, payload }) {
   const id = makeId("email");
   const code = String(crypto.randomInt(100000, 1000000));
@@ -959,8 +965,11 @@ app.post("/login", authRateLimit, async (req, res) => {
   }
 });
 
-app.get("/verify-email", async (_req, res, next) => {
-  await renderPage(res, "verify-email", {}, next);
+app.get("/verify-email", async (req, res, next) => {
+  const challenge = await getEmailChallenge(req.session.emailChallengeId);
+  await renderPage(res, "verify-email", {
+    pendingEmail: challenge ? maskEmail(challenge.email) : "your email address",
+  }, next);
 });
 
 app.post("/verify-email", authRateLimit, async (req, res) => {
