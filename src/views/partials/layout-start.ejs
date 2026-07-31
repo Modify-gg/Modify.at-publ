@@ -19,6 +19,7 @@
             <a href="/admin">Admin</a>
           <% } %>
           <form action="/logout" method="post">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
             <button class="ghost-button" type="submit">Sign out</button>
           </form>
         <% } else { %>

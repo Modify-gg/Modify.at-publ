@@ -69,6 +69,7 @@
       <details class="report-panel">
         <summary>Report this mod</summary>
         <form action="/mods/<%= mod.slug %>/report" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <label>
             <span>Reason</span>
             <select name="reason" required>
@@ -97,6 +98,7 @@
 
       <% if (currentUser) { %>
         <form class="comment-form" action="/mods/<%= mod.slug %>/comments" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
           <label>
             <span>Add your comment</span>
             <textarea name="content" rows="4" maxlength="1000" placeholder="Share feedback, bug notes, or install tips." required></textarea>

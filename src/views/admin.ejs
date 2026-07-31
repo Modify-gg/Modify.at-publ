@@ -18,8 +18,8 @@
               <div class="admin-item-head"><strong><a href="/mods/<%= report.modSlug %>"><%= report.modTitle %></a></strong><span><%= report.reason %></span></div>
               <p>Reported by <%= report.reporterName %><% if (report.details) { %>: <%= report.details %><% } %></p>
               <div class="action-row">
-                <form action="/admin/reports/<%= report.id %>/resolve" method="post"><button class="primary-button" type="submit">Resolve</button></form>
-                <form action="/admin/reports/<%= report.id %>/dismiss" method="post"><button class="secondary-link" type="submit">Dismiss</button></form>
+                <form action="/admin/reports/<%= report.id %>/resolve" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button class="primary-button" type="submit">Resolve</button></form>
+                <form action="/admin/reports/<%= report.id %>/dismiss" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button class="secondary-link" type="submit">Dismiss</button></form>
               </div>
             </div>
           <% }) %>
@@ -30,6 +30,7 @@
     <div class="admin-panel">
       <h2>Add game</h2>
       <form class="inline-form" action="/admin/games" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="text" name="name" placeholder="Game name" required />
         <button class="primary-button" type="submit">Add game</button>
       </form>
@@ -50,6 +51,7 @@
               <% }) %>
             </div>
             <form class="inline-form" action="/admin/games/<%= game.slug %>/categories" method="post">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
               <input type="text" name="categoryName" placeholder="Add sub-category" required />
               <button class="secondary-link" type="submit">Add</button>
             </form>
@@ -103,14 +105,17 @@
               <div class="action-row">
                 <% if (mod.isSafe) { %>
                   <form action="/admin/mods/<%= mod.id %>/unverify" method="post">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <button class="secondary-link" type="submit">Mark unverified</button>
                   </form>
                 <% } else { %>
                   <form action="/admin/mods/<%= mod.id %>/verify" method="post">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                     <button class="primary-button" type="submit">Mark safe</button>
                   </form>
                 <% } %>
                 <form action="/admin/mods/<%= mod.id %>/delete" method="post">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                   <button class="danger-button" type="submit">Delete mod</button>
                 </form>
               </div>
@@ -137,6 +142,7 @@
             <p><%= user.email %></p>
             <% if (user.id !== currentUser.id) { %>
               <form action="/admin/users/<%= user.id %>/delete" method="post">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
                 <button class="danger-button" type="submit">Delete user</button>
               </form>
             <% } %>

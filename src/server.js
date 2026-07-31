@@ -117,6 +117,13 @@ function slugify(value) {
     .slice(0, 60);
 }
 
+function stringInput(value, maxLength = 500) {
+  if (Array.isArray(value)) {
+    return "";
+  }
+  return String(value || "").trim().slice(0, maxLength);
+}
+
 function makeId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 }
@@ -471,6 +478,7 @@ app.use("/styles", express.static(path.join(__dirname, "..", "public", "styles")
 app.use("/uploads", express.static(uploadsDir, {
   dotfiles: "deny",
   setHeaders(res, filePath) {
+    res.setHeader("Cache-Control", "private, no-store");
     if (/\.(php|phtml|phar|cgi|pl|py|asp|aspx|jsp|sh|bash|exe|dll|js|html|htm|svg)$/i.test(filePath)) {
       res.setHeader("Content-Disposition", "attachment");
       res.setHeader("Content-Type", "application/octet-stream");
@@ -489,6 +497,13 @@ app.use(process.env.VERCEL
         maxAge: 1000 * 60 * 60 * 24 * 7,
       },
     }));
+
+app.use((req, _res, next) => {
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString("hex");
+  }
+  next();
+});
 
 function isSameOriginRequest(req) {
   const requestHost = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
@@ -517,6 +532,8 @@ app.use(async (req, res, next) => {
   const users = await listUsers();
   const currentUser = users.find((user) => user.id === req.session.userId) || null;
   res.locals.currentUser = currentUser;
+  res.locals.csrfToken = req.session.csrfToken;
+  res.setHeader("Cache-Control", "no-store");
   res.locals.notice = req.session.notice || null;
   res.locals.googleAuthEnabled = hasGoogleAuth();
   res.locals.recaptchaSiteKey = getRecaptchaConfig().siteKey;
@@ -532,6 +549,19 @@ app.use(async (req, res, next) => {
       : null;
   res.locals.hostedWithoutSupabase = isHostedWithoutSupabase();
   delete req.session.notice;
+  next();
+});
+
+app.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return next();
+  }
+
+  const expected = String(req.session.csrfToken || "");
+  const supplied = String(req.headers["x-csrf-token"] || (req.body && req.body._csrf) || "");
+  if (!expected || supplied.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+    return res.status(403).send("Request could not be verified.");
+  }
   next();
 });
 
@@ -608,11 +638,11 @@ app.get("/help", async (_req, res, next) => {
 });
 
 app.get("/mods", async (req, res, next) => {
-  const query = (req.query.q || "").trim().toLowerCase();
-  const game = (req.query.game || "").trim();
-  const category = (req.query.category || "").trim();
-  const status = (req.query.status || "").trim();
-  const sort = (req.query.sort || "newest").trim();
+  const query = stringInput(req.query.q, 100).toLowerCase();
+  const game = stringInput(req.query.game, 80);
+  const category = stringInput(req.query.category, 80);
+  const status = stringInput(req.query.status, 20);
+  const sort = stringInput(req.query.sort, 20) || "newest";
   let mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   if (query) {
@@ -654,7 +684,8 @@ app.get("/mods", async (req, res, next) => {
 
 app.get("/creators/:username", async (req, res, next) => {
   const users = await listUsers();
-  const creator = users.find((user) => user.username.toLowerCase() === req.params.username.toLowerCase());
+  const username = stringInput(req.params.username, 32);
+  const creator = users.find((user) => user.username.toLowerCase() === username.toLowerCase());
   if (!creator) {
     return res.status(404).render("not-found", { message: "That creator does not exist." });
   }
@@ -668,7 +699,8 @@ app.get("/creators/:username", async (req, res, next) => {
 });
 
 app.get("/mods/:slug", async (req, res, next) => {
-  const rawMod = (await listMods()).find((entry) => entry.slug === req.params.slug);
+  const slug = stringInput(req.params.slug, 80);
+  const rawMod = (await listMods()).find((entry) => entry.slug === slug);
   if (!rawMod) {
     return res.status(404).render("not-found", { message: "That mod does not exist yet." });
   }
@@ -734,7 +766,7 @@ app.post("/mods/:slug/download", downloadRateLimit, handleModDownload);
 app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res) => {
   const mods = await listMods();
   const mod = mods.find((entry) => entry.slug === req.params.slug);
-  const content = (req.body.content || "").trim();
+  const content = stringInput(req.body.content, 1000);
 
   if (!mod) {
     return res.status(404).render("not-found", { message: "That mod does not exist yet." });
@@ -769,8 +801,8 @@ app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res)
 
 app.post("/mods/:slug/report", requireAuth, commentRateLimit, async (req, res) => {
   const mod = (await listMods()).find((entry) => entry.slug === req.params.slug);
-  const reason = String(req.body.reason || "").trim();
-  const details = String(req.body.details || "").trim();
+  const reason = stringInput(req.body.reason, 30);
+  const details = stringInput(req.body.details, 1000);
   const allowedReasons = new Set(["malware", "broken", "copyright", "misleading", "other"]);
 
   if (!mod || !allowedReasons.has(reason)) {
@@ -801,9 +833,9 @@ app.get("/register", async (_req, res, next) => {
 });
 
 app.post("/register", authRateLimit, async (req, res) => {
-  const { username, email, password } = req.body;
-  const normalizedEmail = (email || "").trim().toLowerCase();
-  const cleanUsername = (username || "").trim();
+  const normalizedEmail = stringInput(req.body.email, 254).toLowerCase();
+  const cleanUsername = stringInput(req.body.username, 32);
+  const password = stringInput(req.body.password, 200);
   const users = await listUsers();
 
   if (!(await verifyRecaptcha(req, "register"))) {
@@ -860,8 +892,8 @@ app.get("/login", async (_req, res, next) => {
 });
 
 app.post("/login", authRateLimit, async (req, res) => {
-  const { email, password } = req.body;
-  const normalizedEmail = (email || "").trim().toLowerCase();
+  const normalizedEmail = stringInput(req.body.email, 254).toLowerCase();
+  const password = stringInput(req.body.password, 200);
   const user = (await listUsers()).find((entry) => entry.email === normalizedEmail);
 
   if (!(await verifyRecaptcha(req, "login"))) {
@@ -991,9 +1023,9 @@ app.post("/upload/sign", requireAuth, uploadRateLimit, async (req, res) => {
     return res.status(400).json({ error: "Supabase uploads are not configured." });
   }
 
-  const originalFileName = (req.body.originalFileName || "").trim();
+  const originalFileName = stringInput(req.body.originalFileName, 255);
   const fileSize = Number(req.body.fileSize || 0);
-  const iconOriginalFileName = (req.body.iconOriginalFileName || "").trim();
+  const iconOriginalFileName = stringInput(req.body.iconOriginalFileName, 255);
   const galleryOriginalFileNames = Array.isArray(req.body.galleryOriginalFileNames)
     ? req.body.galleryOriginalFileNames.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 6)
     : [];
@@ -1002,7 +1034,7 @@ app.post("/upload/sign", requireAuth, uploadRateLimit, async (req, res) => {
     return res.status(400).json({ error: "Choose a mod file first." });
   }
 
-  if (!fileSize) {
+  if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > 250 * 1024 * 1024) {
     return res.status(400).json({ error: "That file looks empty. Download it to the device first, then choose it again." });
   }
 
@@ -1012,6 +1044,10 @@ app.post("/upload/sign", requireAuth, uploadRateLimit, async (req, res) => {
 
   if (galleryOriginalFileNames.some((name) => !isImageFileName(name))) {
     return res.status(400).json({ error: "Gallery pictures must be image files." });
+  }
+
+  if (galleryOriginalFileNames.some((name) => name.length > 255)) {
+    return res.status(400).json({ error: "Gallery filenames are too long." });
   }
 
   const uploadId = makeId("upload");
@@ -1052,7 +1088,15 @@ app.post("/upload/sign", requireAuth, uploadRateLimit, async (req, res) => {
 });
 
 app.post("/upload/complete", requireAuth, uploadRateLimit, async (req, res) => {
-  const { title, gameSlug, category, version, summary, description, installInstructions, releaseNotes, uploadToken } = req.body;
+  const title = stringInput(req.body.title, 120);
+  const gameSlug = stringInput(req.body.gameSlug, 80);
+  const category = stringInput(req.body.category, 80);
+  const version = stringInput(req.body.version, 40);
+  const summary = stringInput(req.body.summary, 140);
+  const description = stringInput(req.body.description, 10000);
+  const installInstructions = stringInput(req.body.installInstructions, 10000);
+  const releaseNotes = stringInput(req.body.releaseNotes, 5000);
+  const uploadToken = stringInput(req.body.uploadToken, 5000);
   const uploadedFile = verifyPayload(uploadToken);
   const game = await getGameBySlug(gameSlug);
 
@@ -1284,7 +1328,7 @@ app.post("/admin/reports/:id/:action", requireAdmin, adminRateLimit, async (req,
 });
 
 app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
-  const name = (req.body.name || "").trim();
+  const name = stringInput(req.body.name, 100);
   if (!name) {
     req.session.notice = "Game name is required.";
     return res.redirect("/admin");
@@ -1310,7 +1354,7 @@ app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
 });
 
 app.post("/admin/games/:slug/categories", requireAdmin, adminRateLimit, async (req, res) => {
-  const categoryName = (req.body.categoryName || "").trim();
+  const categoryName = stringInput(req.body.categoryName, 80);
   const games = await listGames();
   const game = games.find((entry) => entry.slug === req.params.slug);
 

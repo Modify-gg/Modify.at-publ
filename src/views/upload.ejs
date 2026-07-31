@@ -2,6 +2,7 @@
 
 <section class="auth-shell upload-shell">
   <form class="auth-card upload-card" action="/upload" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
     <p class="eyebrow">publish a release</p>
     <h1>Upload a mod</h1>
     <label>
@@ -124,6 +125,7 @@
           headers: {
             "accept": "application/json",
             "content-type": "application/json",
+            "x-csrf-token": "<%= csrfToken %>",
           },
           body: JSON.stringify({
             originalFileName: file.name,
@@ -195,11 +197,15 @@
           }
         }
         completeBody.set("uploadToken", signedUpload.uploadToken);
+        completeBody.set("_csrf", "<%= csrfToken %>");
 
         const completeResponse = await fetch("/upload/complete", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "x-csrf-token": "<%= csrfToken %>",
+          },
           body: completeBody,
         });
 

@@ -2,6 +2,7 @@
 
 <section class="auth-shell">
   <form class="auth-card" action="/register" method="post">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
     <p class="eyebrow">creator access</p>
     <h1>Create your account</h1>
     <label>
