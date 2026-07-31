@@ -14,6 +14,8 @@ create table if not exists public.games (
   name text not null unique,
   slug text not null unique,
   categories jsonb not null default '[]'::jsonb,
+  icon_file_name text,
+  icon_file_path text,
   created_at timestamptz not null default now()
 );
 
@@ -89,6 +91,8 @@ alter table public.mods add column if not exists icon_file_path text;
 alter table public.mods add column if not exists gallery_images jsonb not null default '[]'::jsonb;
 alter table public.mods add column if not exists install_instructions text;
 alter table public.mods add column if not exists changelog jsonb not null default '[]'::jsonb;
+alter table public.games add column if not exists icon_file_name text;
+alter table public.games add column if not exists icon_file_path text;
 
 -- The Express server is the only database client. Keep the public API roles out.
 alter table public.users enable row level security;

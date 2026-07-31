@@ -29,9 +29,14 @@
 
     <div class="admin-panel">
       <h2>Add game</h2>
-      <form class="inline-form" action="/admin/games" method="post">
+      <form id="add-game-form" class="game-form" action="/admin/games" method="post" enctype="multipart/form-data">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <input type="text" name="name" placeholder="Game name" required />
+        <label class="file-field">
+          <span>Game image</span>
+          <input id="game-icon" type="file" name="gameIcon" accept="image/png,image/jpeg,image/webp" required />
+          <small class="helper-copy">Square PNG, JPG, or WebP. Exactly 245x245.</small>
+        </label>
         <button class="primary-button" type="submit">Add game</button>
       </form>
     </div>
@@ -42,7 +47,10 @@
         <% games.forEach((game) => { %>
           <div class="admin-item">
             <div class="admin-item-head">
-              <strong><%= game.name %></strong>
+              <strong class="admin-game-name">
+                <% if (game.iconUrl) { %><img class="admin-game-icon" src="<%= game.iconUrl %>" alt="" /><% } %>
+                <%= game.name %>
+              </strong>
               <span><%= game.categories.length %> categories</span>
             </div>
             <div class="badge-row">
@@ -152,5 +160,41 @@
     </div>
   </div>
 </section>
+
+<script>
+  const addGameForm = document.getElementById("add-game-form");
+  const gameIconInput = document.getElementById("game-icon");
+
+  if (addGameForm && gameIconInput) {
+    addGameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const file = gameIconInput.files[0];
+      if (!file) {
+        alert("Choose a game image first.");
+        return;
+      }
+
+      try {
+        const bitmap = await createImageBitmap(file);
+        const validSize = bitmap.width === 245 && bitmap.height === 245;
+        bitmap.close();
+        if (!validSize) {
+          alert("Game images must be exactly 245x245 pixels.");
+          return;
+        }
+      } catch (_error) {
+        alert("That image could not be read. Choose a PNG, JPG, or WebP file.");
+        return;
+      }
+
+      const response = await fetch(addGameForm.action, {
+        method: "POST",
+        body: new FormData(addGameForm),
+        headers: { "x-csrf-token": "<%= csrfToken %>" },
+      });
+      window.location.href = response.url;
+    });
+  }
+</script>
 
 <%- include("partials/layout-end") %>

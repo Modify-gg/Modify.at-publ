@@ -101,6 +101,8 @@ function toDbGame(game) {
     name: game.name,
     slug: game.slug,
     categories: game.categories || [],
+    icon_file_name: game.iconFileName || null,
+    icon_file_path: game.iconFilePath || null,
     created_at: game.createdAt || new Date().toISOString(),
   };
 }
@@ -111,6 +113,8 @@ function fromDbGame(game) {
     name: game.name,
     slug: game.slug,
     categories: game.categories || [],
+    iconFileName: game.icon_file_name || null,
+    iconFilePath: game.icon_file_path || null,
     createdAt: game.created_at,
   };
 }

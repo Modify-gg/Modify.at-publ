@@ -635,6 +635,43 @@ label {
   flex: 1 1 220px;
 }
 
+.game-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.game-form > input[type="text"] {
+  min-width: 0;
+}
+
+.file-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.helper-copy {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-game-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-game-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
 .side-link {
   display: block;
   padding: 10px 0;
@@ -807,6 +844,10 @@ label {
 
   .inline-form {
     align-items: stretch;
+  }
+
+  .game-form {
+    grid-template-columns: 1fr;
   }
 
   .inline-form input,

@@ -234,6 +234,13 @@ async function normalizeMod(mod) {
   };
 }
 
+async function normalizeGame(game) {
+  return {
+    ...game,
+    iconUrl: await getModPreviewUrl(game.iconFilePath),
+  };
+}
+
 function hasGoogleAuth() {
   return Boolean((process.env.GOOGLE_CLIENT_ID || "").trim() && (process.env.GOOGLE_CLIENT_SECRET || "").trim());
 }
@@ -362,6 +369,11 @@ const upload = multer({
     fields: 20,
     parts: 30,
   },
+});
+
+const gameImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 3, parts: 4 },
 });
 
 const imageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -752,6 +764,15 @@ app.get("/mods", async (req, res, next) => {
     mods.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }
 
+  const gameDirectory = (await Promise.all((await listGames()).map(async (entry) => {
+    const gameMods = mods.filter((mod) => mod.gameSlug === entry.slug);
+    return {
+      ...(await normalizeGame(entry)),
+      modCount: gameMods.length,
+      safeCount: gameMods.filter((mod) => mod.isSafe).length,
+    };
+  }))).sort((a, b) => b.modCount - a.modCount || a.name.localeCompare(b.name));
+
   await renderPage(res, "mods", {
     mods,
     query,
@@ -759,6 +780,7 @@ app.get("/mods", async (req, res, next) => {
     category,
     status,
     sort,
+    gameDirectory,
   }, next);
 });
 
@@ -1466,7 +1488,7 @@ app.get("/admin", requireAdmin, async (req, res, next) => {
     }
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
-  const games = (await listGames()).sort((a, b) => a.name.localeCompare(b.name));
+  const games = (await Promise.all((await listGames()).map(normalizeGame))).sort((a, b) => a.name.localeCompare(b.name));
   const reports = (await listReports()).filter((report) => report.status === "open");
   const activity = await listActivity();
 
@@ -1513,10 +1535,16 @@ app.post("/admin/reports/:id/:action", requireAdmin, adminRateLimit, async (req,
   res.redirect("/admin");
 });
 
-app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
+app.post("/admin/games", requireAdmin, adminRateLimit, gameImageUpload.single("gameIcon"), async (req, res) => {
   const name = stringInput(req.body.name, 100);
-  if (!name) {
-    req.session.notice = "Game name is required.";
+  const gameIcon = req.file;
+  if (!name || !gameIcon) {
+    req.session.notice = "Game name and a 245x245 image are required.";
+    return res.redirect("/admin");
+  }
+
+  if (!isImageFile(gameIcon)) {
+    req.session.notice = "The game image must be a PNG, JPG, JPEG, or WebP file.";
     return res.redirect("/admin");
   }
 
@@ -1527,11 +1555,15 @@ app.post("/admin/games", requireAdmin, adminRateLimit, async (req, res) => {
     return res.redirect("/admin");
   }
 
+  const icon = await uploadModFile(gameIcon, `${slug}-game-icon`);
+
   games.push({
     id: makeId("game"),
     name,
     slug,
     categories: [],
+    iconFileName: icon.fileName,
+    iconFilePath: icon.filePath,
     createdAt: new Date().toISOString(),
   });
   await saveGames(games);

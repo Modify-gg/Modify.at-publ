@@ -26,6 +26,35 @@
   </form>
 </section>
 
+<section class="section-block" id="game-directory">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">choose a game</p>
+      <h2>Browse by game</h2>
+    </div>
+  </div>
+  <div class="game-grid">
+    <% gameDirectory.forEach((gameEntry) => { %>
+      <a class="game-card" href="/mods?game=<%= encodeURIComponent(gameEntry.slug) %>">
+        <div class="game-card-art">
+          <% if (gameEntry.iconUrl) { %>
+            <img src="<%= gameEntry.iconUrl %>" alt="" />
+          <% } else { %>
+            <span><%= gameEntry.name.slice(0, 1).toUpperCase() %></span>
+          <% } %>
+        </div>
+        <div class="game-card-copy">
+          <div class="game-card-head">
+            <h3><%= gameEntry.name %></h3>
+            <span aria-hidden="true">&#8594;</span>
+          </div>
+          <p><%= gameEntry.modCount %> mod<%= gameEntry.modCount === 1 ? "" : "s" %> available</p>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</section>
+
 <section class="mod-grid">
   <% if (mods.length) { %>
     <% mods.forEach((mod) => { %>
