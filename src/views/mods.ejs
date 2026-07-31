@@ -17,6 +17,8 @@
       <option value="" <%= !status ? "selected" : "" %>>All statuses</option>
       <option value="safe" <%= status === "safe" ? "selected" : "" %>>Safe only</option>
     </select>
+    <input type="text" name="platform" placeholder="Platform" value="<%= platform %>" />
+    <input type="text" name="gameVersion" placeholder="Game version" value="<%= gameVersion %>" />
     <select name="sort">
       <option value="newest" <%= sort === "newest" ? "selected" : "" %>>Newest</option>
       <option value="popular" <%= sort === "popular" ? "selected" : "" %>>Most downloaded</option>
@@ -72,6 +74,7 @@
         </div>
         <div class="badge-row">
           <span class="status-badge <%= mod.isSafe ? 'safe-badge' : 'warn-badge' %>"><%= mod.isSafe ? "Safe" : "Unverified" %></span>
+          <% mod.platforms.slice(0, 2).forEach((entry) => { %><span class="status-badge plain-badge"><%= entry %></span><% }) %>
         </div>
         <h3><a href="/mods/<%= mod.slug %>"><%= mod.title %></a></h3>
         <p><%= mod.summary %></p>

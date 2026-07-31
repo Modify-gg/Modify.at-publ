@@ -161,6 +161,7 @@ async function sendEmailCode({ to, code, purpose }) {
 }
 
 module.exports = {
+  sendMail,
   sendWelcomeEmail,
   sendEmailCode,
 };

@@ -1,0 +1,12 @@
+<%- include("partials/layout-start", { title: "Edit profile" }) %>
+<section class="auth-shell">
+  <form class="auth-card" action="/profile" method="post">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+    <p class="eyebrow">creator profile</p>
+    <h1>Edit your profile</h1>
+    <label><span>Username</span><input type="text" value="<%= currentUser.username %>" disabled /></label>
+    <label><span>Bio</span><textarea name="bio" rows="6" maxlength="500" placeholder="Tell people what you make."><%= currentUser.bio || "" %></textarea></label>
+    <button class="primary-button" type="submit">Save profile</button>
+  </form>
+</section>
+<%- include("partials/layout-end") %>

@@ -22,6 +22,21 @@
       <span><%= mod.downloadCount %> downloads</span>
         <span>by <a href="/creators/<%= encodeURIComponent(mod.authorName) %>"><%= mod.authorName %></a></span>
     </div>
+    <div class="action-row">
+      <% if (currentUser) { %>
+        <form action="/mods/<%= mod.slug %>/favorite" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="secondary-link" type="submit"><%= isFavorite ? "Remove favorite" : "Add to favorites" %></button>
+        </form>
+      <% } %>
+    </div>
+    <% if (mod.platforms.length || mod.gameVersions.length || mod.dependencies.length) { %>
+      <section class="tag-row compatibility-row">
+        <% mod.platforms.forEach((entry) => { %><span>Platform: <%= entry %></span><% }) %>
+        <% mod.gameVersions.forEach((entry) => { %><span>Game <%= entry %></span><% }) %>
+        <% mod.dependencies.forEach((entry) => { %><span>Needs <%= entry %></span><% }) %>
+      </section>
+    <% } %>
     <div class="detail-copy">
       <p><%= mod.description %></p>
     </div>

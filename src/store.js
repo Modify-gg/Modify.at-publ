@@ -10,6 +10,10 @@ const gamesFile = path.join(dataDir, "games.json");
 const reportsFile = path.join(dataDir, "reports.json");
 const activityFile = path.join(dataDir, "activity.json");
 const challengesFile = path.join(dataDir, "email-challenges.json");
+const favoritesFile = path.join(dataDir, "favorites.json");
+const followsFile = path.join(dataDir, "follows.json");
+const notificationsFile = path.join(dataDir, "notifications.json");
+const downloadEventsFile = path.join(dataDir, "download-events.json");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
 const adminSeed = {
@@ -78,6 +82,7 @@ function toDbUser(user) {
     auth_provider: user.authProvider || "local",
     google_id: user.googleId || null,
     role: user.role || "user",
+    bio: user.bio || "",
     created_at: user.createdAt || new Date().toISOString(),
   };
 }
@@ -91,6 +96,7 @@ function fromDbUser(user) {
     authProvider: user.auth_provider,
     googleId: user.google_id,
     role: user.role,
+    bio: user.bio || "",
     createdAt: user.created_at,
   };
 }
@@ -138,6 +144,11 @@ function toDbMod(mod) {
     author_id: mod.authorId,
     author_name: mod.authorName,
     comments: mod.comments || [],
+    platforms: Array.isArray(mod.platforms) ? mod.platforms : [],
+    game_versions: Array.isArray(mod.gameVersions) ? mod.gameVersions : [],
+    dependencies: Array.isArray(mod.dependencies) ? mod.dependencies : [],
+    featured: Boolean(mod.featured),
+    updated_at: mod.updatedAt || mod.createdAt || new Date().toISOString(),
     created_at: mod.createdAt || new Date().toISOString(),
   };
 
@@ -169,6 +180,11 @@ function fromDbMod(mod) {
     authorId: mod.author_id,
     authorName: mod.author_name,
     comments: Array.isArray(mod.comments) ? mod.comments : [],
+    platforms: Array.isArray(mod.platforms) ? mod.platforms : [],
+    gameVersions: Array.isArray(mod.game_versions) ? mod.game_versions : [],
+    dependencies: Array.isArray(mod.dependencies) ? mod.dependencies : [],
+    featured: Boolean(mod.featured),
+    updatedAt: mod.updated_at || mod.created_at,
     iconFileName: mod.icon_file_name || null,
     iconFilePath: mod.icon_file_path || null,
     galleryImages: Array.isArray(mod.gallery_images) ? mod.gallery_images : [],
@@ -237,6 +253,78 @@ function toDbActivity(entry) {
     created_at: entry.createdAt || new Date().toISOString(),
   };
 }
+
+function mapRecord(record, direction, table) {
+  if (direction === "toDb") {
+    if (table === "favorites") {
+      return { id: record.id, user_id: record.userId, mod_id: record.modId, mod_slug: record.modSlug, mod_title: record.modTitle, created_at: record.createdAt || new Date().toISOString() };
+    }
+    if (table === "follows") {
+      return { id: record.id, user_id: record.userId, creator_id: record.creatorId, creator_name: record.creatorName, created_at: record.createdAt || new Date().toISOString() };
+    }
+    if (table === "download_events") {
+      return { id: record.id, mod_id: record.modId, creator_id: record.creatorId, created_at: record.createdAt || new Date().toISOString() };
+    }
+    return {
+      id: record.id,
+      user_id: record.userId || null,
+      creator_id: record.creatorId || null,
+      creator_name: record.creatorName || null,
+      mod_id: record.modId || null,
+      mod_slug: record.modSlug || null,
+      mod_title: record.modTitle || null,
+      type: record.type || null,
+      title: record.title || null,
+      message: record.message || null,
+      read: Boolean(record.read),
+      created_at: record.createdAt || new Date().toISOString(),
+    };
+  }
+  return {
+    id: record.id,
+    userId: record.user_id,
+    creatorId: record.creator_id,
+    creatorName: record.creator_name,
+    modId: record.mod_id,
+    modSlug: record.mod_slug,
+    modTitle: record.mod_title,
+    type: record.type,
+    title: record.title,
+    message: record.message,
+    read: Boolean(record.read),
+    createdAt: record.created_at,
+  };
+}
+
+function listLocal(file) {
+  return readJson(file);
+}
+
+async function listRecords(table, file) {
+  if (!supabase) return listLocal(file);
+  const { data, error } = await supabase.from(table).select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data.map((entry) => mapRecord(entry, "fromDb"));
+}
+
+async function saveRecords(table, file, records) {
+  if (!supabase) {
+    writeJson(file, records.slice(-1000));
+    return;
+  }
+  const { error } = await supabase.from(table).upsert(records.map((entry) => mapRecord(entry, "toDb", table)), { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function listFavorites() { return listRecords("favorites", favoritesFile); }
+async function saveFavorites(records) { return saveRecords("favorites", favoritesFile, records); }
+async function listFollows() { return listRecords("follows", followsFile); }
+async function saveFollows(records) { return saveRecords("follows", followsFile, records); }
+async function listNotifications() { return listRecords("notifications", notificationsFile); }
+async function saveNotifications(records) { return saveRecords("notifications", notificationsFile, records); }
+
+async function listDownloadEvents() { return listRecords("download_events", downloadEventsFile); }
+async function saveDownloadEvents(records) { return saveRecords("download_events", downloadEventsFile, records); }
 
 function fromDbChallenge(challenge) {
   return {
@@ -551,7 +639,11 @@ async function initializeStore() {
     ensureFile(modsFile);
     ensureFile(reportsFile);
     ensureFile(activityFile);
-    ensureFile(challengesFile);
+  ensureFile(challengesFile);
+  ensureFile(favoritesFile);
+  ensureFile(followsFile);
+  ensureFile(notificationsFile);
+  ensureFile(downloadEventsFile);
 
     if (!fs.existsSync(gamesFile)) {
       writeJson(gamesFile, defaultGames);
@@ -709,6 +801,14 @@ module.exports = {
   getEmailChallenge,
   saveEmailChallenge,
   deleteEmailChallenge,
+  listFavorites,
+  saveFavorites,
+  listFollows,
+  saveFollows,
+  listNotifications,
+  saveNotifications,
+  listDownloadEvents,
+  saveDownloadEvents,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,

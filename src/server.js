@@ -7,7 +7,7 @@ const session = require("express-session");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const { loadEnv } = require("./env");
-const { sendWelcomeEmail, sendEmailCode } = require("./mailer");
+const { sendWelcomeEmail, sendEmailCode, sendMail } = require("./mailer");
 
 loadEnv();
 
@@ -30,6 +30,14 @@ const {
   getEmailChallenge,
   saveEmailChallenge,
   deleteEmailChallenge,
+  listFavorites,
+  saveFavorites,
+  listFollows,
+  saveFollows,
+  listNotifications,
+  saveNotifications,
+  listDownloadEvents,
+  saveDownloadEvents,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,
@@ -125,6 +133,10 @@ function stringInput(value, maxLength = 500) {
     return "";
   }
   return String(value || "").trim().slice(0, maxLength);
+}
+
+function listInput(value, maxItems = 12, maxLength = 60) {
+  return String(value || "").split(",").map((entry) => entry.trim()).filter(Boolean).slice(0, maxItems).map((entry) => entry.slice(0, maxLength));
 }
 
 function makeId(prefix) {
@@ -231,7 +243,40 @@ async function normalizeMod(mod) {
     comments: Array.isArray(mod.comments)
       ? [...mod.comments].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
       : [],
+    platforms: Array.isArray(mod.platforms) ? mod.platforms : [],
+    gameVersions: Array.isArray(mod.gameVersions) ? mod.gameVersions : [],
+    dependencies: Array.isArray(mod.dependencies) ? mod.dependencies : [],
   };
+}
+
+async function notifyFollowersOfRelease(mod) {
+  const follows = (await listFollows()).filter((follow) => follow.creatorId === mod.authorId);
+  if (!follows.length) return;
+  const users = await listUsers();
+  const notifications = await listNotifications();
+  for (const follow of follows) {
+    notifications.push({
+      id: makeId("notification"),
+      userId: follow.userId,
+      type: "new_release",
+      modId: mod.id,
+      modSlug: mod.slug,
+      modTitle: mod.title,
+      title: "New release from a creator you follow",
+      message: `${mod.authorName} published ${mod.title}.`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    });
+    const user = users.find((entry) => entry.id === follow.userId);
+    if (user) {
+      try {
+        await sendMail({ to: user.email, subject: `${mod.authorName} published ${mod.title}`, text: `${mod.authorName} just published ${mod.title} on modify.at.\n\nView it here: https://www.modify.at/mods/${mod.slug}\n` });
+      } catch (error) {
+        console.error("Release notification email failed:", error.message);
+      }
+    }
+  }
+  await saveNotifications(notifications);
 }
 
 async function normalizeGame(game) {
@@ -675,7 +720,7 @@ async function renderPage(res, view, locals = {}, next) {
 app.get("/", async (_req, res, next) => {
   const mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => b.downloadCount - a.downloadCount);
   const newestMods = [...mods].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6);
-  const featuredMods = mods.slice(0, 3);
+  const featuredMods = [...mods.filter((mod) => mod.featured), ...mods.filter((mod) => !mod.featured)].slice(0, 3);
   const games = await listGames();
   const gameDirectory = games
     .map((game) => {
@@ -734,6 +779,8 @@ app.get("/mods", async (req, res, next) => {
   const game = stringInput(req.query.game, 80);
   const category = stringInput(req.query.category, 80);
   const status = stringInput(req.query.status, 20);
+  const platform = stringInput(req.query.platform, 60).toLowerCase();
+  const gameVersion = stringInput(req.query.gameVersion, 60).toLowerCase();
   const sort = stringInput(req.query.sort, 20) || "newest";
   let mods = (await Promise.all((await listMods()).map(normalizeMod))).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -758,6 +805,14 @@ app.get("/mods", async (req, res, next) => {
     mods = mods.filter((mod) => mod.isSafe);
   }
 
+  if (platform) {
+    mods = mods.filter((mod) => mod.platforms.some((entry) => entry.toLowerCase() === platform));
+  }
+
+  if (gameVersion) {
+    mods = mods.filter((mod) => mod.gameVersions.some((entry) => entry.toLowerCase() === gameVersion));
+  }
+
   if (sort === "popular") {
     mods.sort((a, b) => b.downloadCount - a.downloadCount);
   } else if (sort === "oldest") {
@@ -779,6 +834,8 @@ app.get("/mods", async (req, res, next) => {
     game,
     category,
     status,
+    platform,
+    gameVersion,
     sort,
     gameDirectory,
   }, next);
@@ -797,7 +854,11 @@ app.get("/creators/:username", async (req, res, next) => {
     .map(normalizeMod)))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  await renderPage(res, "creator", { creator, creatorMods }, next);
+  const follows = await listFollows();
+  const isFollowing = Boolean(res.locals.currentUser && follows.some((entry) => entry.userId === res.locals.currentUser.id && entry.creatorId === creator.id));
+  const followerCount = follows.filter((entry) => entry.creatorId === creator.id).length;
+
+  await renderPage(res, "creator", { creator, creatorMods, isFollowing, followerCount }, next);
 });
 
 app.get("/mods/:slug", async (req, res, next) => {
@@ -808,12 +869,16 @@ app.get("/mods/:slug", async (req, res, next) => {
   }
 
   const mod = await normalizeMod(rawMod);
+  const favorites = res.locals.currentUser ? await listFavorites() : [];
+  const follows = res.locals.currentUser ? await listFollows() : [];
+  const isFavorite = Boolean(res.locals.currentUser && favorites.some((entry) => entry.userId === res.locals.currentUser.id && entry.modId === mod.id));
+  const isFollowing = Boolean(res.locals.currentUser && follows.some((entry) => entry.userId === res.locals.currentUser.id && entry.creatorId === mod.authorId));
   const relatedMods = await Promise.all((await listMods())
     .filter((entry) => entry.id !== rawMod.id && entry.gameSlug === rawMod.gameSlug)
     .slice(0, 3)
     .map(normalizeMod));
 
-  await renderPage(res, "mod-detail", { mod, relatedMods }, next);
+  await renderPage(res, "mod-detail", { mod, relatedMods, isFavorite, isFollowing }, next);
 });
 
 async function handleModDownload(req, res, next) {
@@ -829,6 +894,9 @@ async function handleModDownload(req, res, next) {
     const downloadUrl = await getModDownloadUrl(filePath, mod.originalFileName || mod.fileName);
     mod.downloadCount += 1;
     await saveMods(mods);
+    const downloadEvents = await listDownloadEvents();
+    downloadEvents.push({ id: makeId("download"), modId: mod.id, creatorId: mod.authorId, createdAt: new Date().toISOString() });
+    await saveDownloadEvents(downloadEvents);
 
     // Proxy the private object so browsers receive an attachment response from
     // modify.at instead of navigating to the signed storage URL.
@@ -864,6 +932,39 @@ async function handleModDownload(req, res, next) {
 
 app.get("/mods/:slug/download", downloadRateLimit, handleModDownload);
 app.post("/mods/:slug/download", downloadRateLimit, handleModDownload);
+
+app.post("/mods/:slug/favorite", requireAuth, commentRateLimit, async (req, res) => {
+  const mod = (await listMods()).find((entry) => entry.slug === req.params.slug);
+  if (!mod) return res.status(404).render("not-found", { message: "That mod does not exist yet." });
+  const favorites = await listFavorites();
+  const existing = favorites.find((entry) => entry.userId === res.locals.currentUser.id && entry.modId === mod.id);
+  if (existing) {
+    await saveFavorites(favorites.filter((entry) => entry.id !== existing.id));
+    req.session.notice = "Removed from favorites.";
+  } else {
+    favorites.push({ id: makeId("favorite"), userId: res.locals.currentUser.id, modId: mod.id, modSlug: mod.slug, modTitle: mod.title, createdAt: new Date().toISOString() });
+    await saveFavorites(favorites);
+    req.session.notice = "Added to favorites.";
+  }
+  res.redirect(`/mods/${mod.slug}`);
+});
+
+app.post("/creators/:username/follow", requireAuth, commentRateLimit, async (req, res) => {
+  const username = stringInput(req.params.username, 32);
+  const creator = (await listUsers()).find((entry) => entry.username.toLowerCase() === username.toLowerCase());
+  if (!creator || creator.id === res.locals.currentUser.id) return res.redirect(`/creators/${encodeURIComponent(username)}`);
+  const follows = await listFollows();
+  const existing = follows.find((entry) => entry.userId === res.locals.currentUser.id && entry.creatorId === creator.id);
+  if (existing) {
+    await saveFollows(follows.filter((entry) => entry.id !== existing.id));
+    req.session.notice = `You unfollowed ${creator.username}.`;
+  } else {
+    follows.push({ id: makeId("follow"), userId: res.locals.currentUser.id, creatorId: creator.id, creatorName: creator.username, createdAt: new Date().toISOString() });
+    await saveFollows(follows);
+    req.session.notice = `You are now following ${creator.username}.`;
+  }
+  res.redirect(`/creators/${encodeURIComponent(creator.username)}`);
+});
 
 app.post("/mods/:slug/comments", requireAuth, commentRateLimit, async (req, res) => {
   const mods = await listMods();
@@ -1192,9 +1293,42 @@ app.get("/dashboard", requireAuth, async (req, res, next) => {
     .map(normalizeMod)))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+  const favorites = (await listFavorites()).filter((entry) => entry.userId === res.locals.currentUser.id);
+  const allMods = await listMods();
+  const favoriteMods = (await Promise.all(favorites.map((entry) => allMods.find((mod) => mod.id === entry.modId)).filter(Boolean).map(normalizeMod)));
+  const notifications = (await listNotifications()).filter((entry) => entry.userId === res.locals.currentUser.id).slice(0, 12);
+  const downloadEvents = (await listDownloadEvents()).filter((entry) => entry.creatorId === res.locals.currentUser.id);
+
   await renderPage(res, "dashboard", {
     userMods,
+    favoriteMods,
+    notifications,
+    creatorDownloadEvents: downloadEvents,
   }, next);
+});
+
+app.post("/notifications/read", requireAuth, async (req, res) => {
+  const notifications = await listNotifications();
+  notifications.forEach((entry) => {
+    if (entry.userId === res.locals.currentUser.id) entry.read = true;
+  });
+  await saveNotifications(notifications);
+  res.redirect("/dashboard");
+});
+
+app.get("/profile", requireAuth, async (_req, res, next) => {
+  await renderPage(res, "profile", {}, next);
+});
+
+app.post("/profile", requireAuth, async (req, res) => {
+  const users = await listUsers();
+  const user = users.find((entry) => entry.id === res.locals.currentUser.id);
+  if (user) {
+    user.bio = stringInput(req.body.bio, 500);
+    await saveUsers(users);
+    req.session.notice = "Profile updated.";
+  }
+  res.redirect(`/creators/${encodeURIComponent(res.locals.currentUser.username)}`);
 });
 
 app.get("/upload", requireAuth, async (_req, res, next) => {
@@ -1300,6 +1434,9 @@ app.post("/upload/complete", requireAuth, uploadRateLimit, async (req, res) => {
   const gameSlug = stringInput(req.body.gameSlug, 80);
   const category = stringInput(req.body.category, 80);
   const version = stringInput(req.body.version, 40);
+  const gameVersions = listInput(req.body.gameVersions);
+  const platforms = listInput(req.body.platforms);
+  const dependencies = listInput(req.body.dependencies);
   const summary = stringInput(req.body.summary, 140);
   const description = stringInput(req.body.description, 10000);
   const installInstructions = stringInput(req.body.installInstructions, 10000);
@@ -1346,6 +1483,9 @@ app.post("/upload/complete", requireAuth, uploadRateLimit, async (req, res) => {
     gameSlug: game.slug,
     category: category.trim(),
     version: version.trim(),
+    gameVersions,
+    platforms,
+    dependencies,
     summary: summary.trim(),
     description: description.trim(),
     fileName: uploadedFile.fileName,
@@ -1371,9 +1511,11 @@ app.post("/upload/complete", requireAuth, uploadRateLimit, async (req, res) => {
     authorName: res.locals.currentUser.username,
     comments: [],
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
 
   await saveMods(mods);
+  await notifyFollowersOfRelease(mods[mods.length - 1]);
   req.session.notice = "Your mod is now published as Unverified.";
   res.redirect(`/mods/${slug}`);
 });
@@ -1396,6 +1538,9 @@ app.post("/upload", requireAuth, rejectLegacyUploadOnVercel, upload.fields([
   }
 
   const { title, gameSlug, category, version, summary, description, installInstructions, releaseNotes } = req.body;
+  const gameVersions = listInput(req.body.gameVersions);
+  const platforms = listInput(req.body.platforms);
+  const dependencies = listInput(req.body.dependencies);
   const game = await getGameBySlug(gameSlug);
   const modFile = req.files && req.files.modFile ? req.files.modFile[0] : null;
   const iconFile = req.files && req.files.iconFile ? req.files.iconFile[0] : null;
@@ -1447,6 +1592,9 @@ app.post("/upload", requireAuth, rejectLegacyUploadOnVercel, upload.fields([
     gameSlug: game.slug,
     category: category.trim(),
     version: version.trim(),
+    gameVersions,
+    platforms,
+    dependencies,
     summary: summary.trim(),
     description: description.trim(),
     fileName: uploadedFile.fileName,
@@ -1470,10 +1618,12 @@ app.post("/upload", requireAuth, rejectLegacyUploadOnVercel, upload.fields([
     authorName: res.locals.currentUser.username,
     comments: [],
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
   mods.push(mod);
   await saveMods(mods);
+  await notifyFollowersOfRelease(mod);
   req.session.notice = "Your mod is now published as Unverified.";
   res.redirect(`/mods/${mod.slug}`);
 });
@@ -1610,6 +1760,21 @@ app.post("/admin/mods/:id/verify", requireAdmin, adminRateLimit, async (req, res
   await saveMods(mods);
   await logActivity(res.locals.currentUser, "mod_marked_safe", "mod", mod.id, mod.title);
   req.session.notice = `${mod.title} is now marked Safe.`;
+  res.redirect("/admin");
+});
+
+app.post("/admin/mods/:id/feature", requireAdmin, adminRateLimit, async (req, res) => {
+  const mods = await listMods();
+  const mod = mods.find((entry) => entry.id === req.params.id);
+  if (!mod) {
+    req.session.notice = "Mod not found.";
+    return res.redirect("/admin");
+  }
+  mod.featured = !mod.featured;
+  mod.updatedAt = new Date().toISOString();
+  await saveMods(mods);
+  await logActivity(res.locals.currentUser, mod.featured ? "mod_featured" : "mod_unfeatured", "mod", mod.id, mod.title);
+  req.session.notice = mod.featured ? "Mod featured on the homepage." : "Mod removed from featured content.";
   res.redirect("/admin");
 });
 

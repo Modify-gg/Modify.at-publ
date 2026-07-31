@@ -6,6 +6,27 @@
     <h1><%= currentUser.username %>, your releases are here.</h1>
   </div>
   <a class="primary-link" href="/upload">Upload a mod</a>
+  <a class="secondary-link" href="/profile">Edit profile</a>
+</section>
+
+<section class="dashboard-columns">
+  <div class="admin-panel">
+    <div class="section-heading"><h2>Favorites</h2><span><%= favoriteMods.length %></span></div>
+    <% if (favoriteMods.length) { %>
+      <% favoriteMods.forEach((mod) => { %><a class="side-link" href="/mods/<%= mod.slug %>"><%= mod.title %> <span class="side-link-meta">(<%= mod.downloadCount %> downloads)</span></a><% }) %>
+    <% } else { %><p class="helper-copy">Save mods here so you can find them again.</p><% } %>
+  </div>
+  <div class="admin-panel">
+    <div class="section-heading"><h2>Notifications</h2><form action="/notifications/read" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>" /><button class="secondary-link" type="submit">Mark read</button></form></div>
+    <% if (notifications.length) { %>
+      <% notifications.forEach((entry) => { %><a class="side-link <%= entry.read ? '' : 'unread-notification' %>" href="/mods/<%= entry.modSlug %>"><strong><%= entry.title %></strong><br /><span class="side-link-meta"><%= entry.message %></span></a><% }) %>
+    <% } else { %><p class="helper-copy">No notifications yet.</p><% } %>
+  </div>
+</section>
+
+<section class="admin-panel analytics-panel">
+  <div class="section-heading"><h2>Download analytics</h2><span><%= creatorDownloadEvents.length %> tracked downloads</span></div>
+  <p class="helper-copy">Downloads are recorded per release so you can see how your work is being discovered.</p>
 </section>
 
 <section class="stats-row">

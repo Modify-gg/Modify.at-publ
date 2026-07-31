@@ -4,8 +4,15 @@
   <div>
     <p class="eyebrow">creator profile</p>
     <h1><%= creator.username %></h1>
-    <p class="hero-text"><%= creatorMods.length %> published mod<%= creatorMods.length === 1 ? "" : "s" %>.</p>
+    <p class="hero-text"><%= creator.bio || "This creator has not added a bio yet." %></p>
+    <p class="helper-copy"><%= creatorMods.length %> published mod<%= creatorMods.length === 1 ? "" : "s" %> · <%= followerCount %> follower<%= followerCount === 1 ? "" : "s" %></p>
   </div>
+  <% if (currentUser && currentUser.id !== creator.id) { %>
+    <form action="/creators/<%= encodeURIComponent(creator.username) %>/follow" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <button class="primary-button" type="submit"><%= isFollowing ? "Unfollow creator" : "Follow creator" %></button>
+    </form>
+  <% } %>
 </section>
 
 <section class="mod-grid">

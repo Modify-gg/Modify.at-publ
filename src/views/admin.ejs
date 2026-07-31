@@ -110,7 +110,11 @@
                   <p><%= mod.game %> / <%= mod.category %> by <%= mod.authorName %></p>
                 </div>
               </div>
-              <div class="action-row">
+                  <div class="action-row">
+                <form action="/admin/mods/<%= mod.id %>/feature" method="post">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+                  <button class="secondary-link" type="submit"><%= mod.featured ? "Remove featured" : "Feature mod" %></button>
+                </form>
                 <% if (mod.isSafe) { %>
                   <form action="/admin/mods/<%= mod.id %>/unverify" method="post">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
