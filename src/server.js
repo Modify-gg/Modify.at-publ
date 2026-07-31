@@ -675,6 +675,24 @@ app.get("/help", async (_req, res, next) => {
   await renderPage(res, "help", {}, next);
 });
 
+app.get("/ads.txt", (_req, res) => {
+  res.type("text/plain").send("google.com, pub-7721626603982200, DIRECT, f08c47fec0942fa0\n");
+});
+
+app.get("/robots.txt", (_req, res) => {
+  res.type("text/plain").send([
+    "User-agent: *",
+    "Allow: /",
+    "",
+    "User-agent: Mediapartners-Google",
+    "Allow: /",
+    "",
+    "User-agent: Google-Display-Ads-Bot",
+    "Allow: /",
+    "",
+  ].join("\n"));
+});
+
 app.get("/mods", async (req, res, next) => {
   const query = stringInput(req.query.q, 100).toLowerCase();
   const game = stringInput(req.query.game, 80);
