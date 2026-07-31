@@ -571,6 +571,7 @@ app.use(async (req, res, next) => {
   const currentUser = users.find((user) => user.id === req.session.userId) || null;
   res.locals.currentUser = currentUser;
   res.locals.csrfToken = req.session.csrfToken;
+  res.locals.assetVersion = process.env.VERCEL_GIT_COMMIT_SHA || "dev";
   res.setHeader("Cache-Control", "no-store");
   res.locals.notice = req.session.notice || null;
   res.locals.googleAuthEnabled = hasGoogleAuth();
