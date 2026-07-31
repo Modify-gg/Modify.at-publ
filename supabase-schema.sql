@@ -69,6 +69,17 @@ create table if not exists public.activity_log (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.email_challenges (
+  id text primary key,
+  email text not null,
+  purpose text not null,
+  code_hash text not null,
+  payload jsonb not null default '{}'::jsonb,
+  attempts integer not null default 0,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 insert into storage.buckets (id, name, public)
 values ('mods', 'mods', false)
 on conflict (id) do nothing;
@@ -85,9 +96,11 @@ alter table public.games enable row level security;
 alter table public.mods enable row level security;
 alter table public.reports enable row level security;
 alter table public.activity_log enable row level security;
+alter table public.email_challenges enable row level security;
 revoke all on table public.users from anon, authenticated, public;
 revoke all on table public.games from anon, authenticated, public;
 revoke all on table public.mods from anon, authenticated, public;
 revoke all on table public.reports from anon, authenticated, public;
 revoke all on table public.activity_log from anon, authenticated, public;
+revoke all on table public.email_challenges from anon, authenticated, public;
 alter default privileges in schema public revoke all on tables from anon, authenticated;

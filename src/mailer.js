@@ -146,6 +146,16 @@ async function sendWelcomeEmail(user) {
   });
 }
 
+async function sendEmailCode({ to, code, purpose }) {
+  const action = purpose === "signup" ? "finish creating your account" : "finish signing in";
+  await sendMail({
+    to,
+    subject: "Your modify.at verification code",
+    text: `Your modify.at code is: ${code}\n\nUse this code to ${action}. It expires in 10 minutes. If you did not request this, you can ignore this email.\n`,
+  });
+}
+
 module.exports = {
   sendWelcomeEmail,
+  sendEmailCode,
 };

@@ -7,7 +7,7 @@ const session = require("express-session");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const { loadEnv } = require("./env");
-const { sendWelcomeEmail } = require("./mailer");
+const { sendWelcomeEmail, sendEmailCode } = require("./mailer");
 
 loadEnv();
 
@@ -27,6 +27,9 @@ const {
   saveReports,
   listActivity,
   saveActivity,
+  getEmailChallenge,
+  saveEmailChallenge,
+  deleteEmailChallenge,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,
@@ -126,6 +129,35 @@ function stringInput(value, maxLength = 500) {
 
 function makeId(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+}
+
+function hashEmailCode(id, purpose, code) {
+  return crypto.createHmac("sha256", sessionSecret).update(`${id}:${purpose}:${code}`).digest("hex");
+}
+
+async function issueEmailChallenge({ email, purpose, payload }) {
+  const id = makeId("email");
+  const code = String(crypto.randomInt(100000, 1000000));
+  const expiryMinutes = Math.min(30, Math.max(5, Number(process.env.AUTH_CODE_EXPIRY_MINUTES || 10)));
+  const challenge = {
+    id,
+    email,
+    purpose,
+    codeHash: hashEmailCode(id, purpose, code),
+    payload,
+    attempts: 0,
+    expiresAt: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(),
+  };
+
+  await saveEmailChallenge(challenge);
+  try {
+    await sendEmailCode({ to: email, code, purpose });
+  } catch (error) {
+    await deleteEmailChallenge(id);
+    throw error;
+  }
+  return challenge;
 }
 
 function signPayload(payload) {
@@ -874,17 +906,21 @@ app.post("/register", authRateLimit, async (req, res) => {
     createdAt: new Date().toISOString(),
   };
 
-  users.push(user);
-  await saveUsers(users);
-  req.session.userId = user.id;
   try {
-    await sendWelcomeEmail(user);
-    req.session.notice = "Your modify.at account is live. Welcome email sent.";
+    const challenge = await issueEmailChallenge({
+      email: user.email,
+      purpose: "signup",
+      payload: user,
+    });
+    req.session.emailChallengeId = challenge.id;
+    req.session.emailChallengePurpose = "signup";
+    req.session.notice = "Check your email for a six-digit code.";
   } catch (error) {
-    console.error("Failed to send welcome email:", error.message);
-    req.session.notice = "Your modify.at account is live. Email delivery needs SMTP setup.";
+    console.error("Failed to send signup code:", error.message);
+    req.session.notice = "We could not send the verification email. Check SMTP settings and try again.";
+    return res.redirect("/register");
   }
-  res.redirect("/dashboard");
+  res.redirect("/verify-email");
 });
 
 app.get("/login", async (_req, res, next) => {
@@ -906,9 +942,108 @@ app.post("/login", authRateLimit, async (req, res) => {
     return res.redirect("/login");
   }
 
+  try {
+    const challenge = await issueEmailChallenge({
+      email: user.email,
+      purpose: "login",
+      payload: { userId: user.id },
+    });
+    req.session.emailChallengeId = challenge.id;
+    req.session.emailChallengePurpose = "login";
+    req.session.notice = "Check your email for a six-digit sign-in code.";
+    res.redirect("/verify-email");
+  } catch (error) {
+    console.error("Failed to send login code:", error.message);
+    req.session.notice = "We could not send the sign-in code. Check SMTP settings and try again.";
+    res.redirect("/login");
+  }
+});
+
+app.get("/verify-email", async (_req, res, next) => {
+  await renderPage(res, "verify-email", {}, next);
+});
+
+app.post("/verify-email", authRateLimit, async (req, res) => {
+  const challengeId = req.session.emailChallengeId;
+  const purpose = req.session.emailChallengePurpose;
+  const challenge = await getEmailChallenge(challengeId);
+  const code = stringInput(req.body.code, 6);
+
+  if (!challenge || challenge.purpose !== purpose || new Date(challenge.expiresAt).getTime() <= Date.now()) {
+    delete req.session.emailChallengeId;
+    delete req.session.emailChallengePurpose;
+    req.session.notice = "That code expired. Start again.";
+    return res.redirect(purpose === "signup" ? "/register" : "/login");
+  }
+
+  if (challenge.attempts >= 5) {
+    await deleteEmailChallenge(challenge.id);
+    delete req.session.emailChallengeId;
+    delete req.session.emailChallengePurpose;
+    req.session.notice = "Too many incorrect codes. Start again.";
+    return res.redirect(purpose === "signup" ? "/register" : "/login");
+  }
+
+  const expectedHash = hashEmailCode(challenge.id, challenge.purpose, code);
+  if (code.length !== 6 || !crypto.timingSafeEqual(Buffer.from(expectedHash), Buffer.from(challenge.codeHash))) {
+    challenge.attempts += 1;
+    await saveEmailChallenge(challenge);
+    req.session.notice = "That code is incorrect.";
+    return res.redirect("/verify-email");
+  }
+
+  await deleteEmailChallenge(challenge.id);
+  delete req.session.emailChallengeId;
+  delete req.session.emailChallengePurpose;
+
+  if (purpose === "signup") {
+    const users = await listUsers();
+    const pendingUser = challenge.payload;
+    if (users.some((entry) => entry.email === pendingUser.email || entry.username.toLowerCase() === pendingUser.username.toLowerCase())) {
+      req.session.notice = "That account information is already in use.";
+      return res.redirect("/register");
+    }
+    users.push(pendingUser);
+    await saveUsers(users);
+    req.session.userId = pendingUser.id;
+    try {
+      await sendWelcomeEmail(pendingUser);
+    } catch (error) {
+      console.error("Failed to send welcome email:", error.message);
+    }
+    req.session.notice = "Your modify.at account is live. Welcome!";
+    return res.redirect("/dashboard");
+  }
+
+  const user = (await listUsers()).find((entry) => entry.id === challenge.payload.userId);
+  if (!user) {
+    req.session.notice = "That account no longer exists.";
+    return res.redirect("/login");
+  }
   req.session.userId = user.id;
   req.session.notice = `Welcome back, ${user.username}.`;
   res.redirect("/dashboard");
+});
+
+app.post("/verify-email/resend", authRateLimit, async (req, res) => {
+  const challengeId = req.session.emailChallengeId;
+  const purpose = req.session.emailChallengePurpose;
+  const previous = await getEmailChallenge(challengeId);
+  if (!previous || !["signup", "login"].includes(purpose)) {
+    req.session.notice = "Start the sign-in or signup process again.";
+    return res.redirect("/login");
+  }
+
+  try {
+    await deleteEmailChallenge(previous.id);
+    const challenge = await issueEmailChallenge({ email: previous.email, purpose, payload: previous.payload });
+    req.session.emailChallengeId = challenge.id;
+    req.session.notice = "A new code was sent to your email.";
+  } catch (error) {
+    console.error("Failed to resend email code:", error.message);
+    req.session.notice = "We could not resend the code. Try again later.";
+  }
+  res.redirect("/verify-email");
 });
 
 app.get("/auth/google", (req, res) => {

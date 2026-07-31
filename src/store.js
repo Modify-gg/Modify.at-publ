@@ -9,6 +9,7 @@ const modsFile = path.join(dataDir, "mods.json");
 const gamesFile = path.join(dataDir, "games.json");
 const reportsFile = path.join(dataDir, "reports.json");
 const activityFile = path.join(dataDir, "activity.json");
+const challengesFile = path.join(dataDir, "email-challenges.json");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
 const adminSeed = {
@@ -233,6 +234,32 @@ function toDbActivity(entry) {
   };
 }
 
+function fromDbChallenge(challenge) {
+  return {
+    id: challenge.id,
+    email: challenge.email,
+    purpose: challenge.purpose,
+    codeHash: challenge.code_hash,
+    payload: challenge.payload || {},
+    attempts: challenge.attempts || 0,
+    expiresAt: challenge.expires_at,
+    createdAt: challenge.created_at,
+  };
+}
+
+function toDbChallenge(challenge) {
+  return {
+    id: challenge.id,
+    email: challenge.email,
+    purpose: challenge.purpose,
+    code_hash: challenge.codeHash,
+    payload: challenge.payload || {},
+    attempts: challenge.attempts || 0,
+    expires_at: challenge.expiresAt,
+    created_at: challenge.createdAt || new Date().toISOString(),
+  };
+}
+
 async function listUsers() {
   if (!supabase) {
     return readJson(usersFile);
@@ -356,6 +383,40 @@ async function saveActivity(entries) {
   }
 
   const { error } = await supabase.from("activity_log").upsert(entries.map(toDbActivity), { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function getEmailChallenge(id) {
+  if (!id) return null;
+  if (!supabase) {
+    return readJson(challengesFile).find((challenge) => challenge.id === id) || null;
+  }
+
+  const { data, error } = await supabase.from("email_challenges").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? fromDbChallenge(data) : null;
+}
+
+async function saveEmailChallenge(challenge) {
+  if (!supabase) {
+    const challenges = readJson(challengesFile).filter((entry) => entry.id !== challenge.id);
+    challenges.push(challenge);
+    writeJson(challengesFile, challenges.slice(-100));
+    return;
+  }
+
+  const { error } = await supabase.from("email_challenges").upsert(toDbChallenge(challenge), { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function deleteEmailChallenge(id) {
+  if (!id) return;
+  if (!supabase) {
+    writeJson(challengesFile, readJson(challengesFile).filter((challenge) => challenge.id !== id));
+    return;
+  }
+
+  const { error } = await supabase.from("email_challenges").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -486,6 +547,7 @@ async function initializeStore() {
     ensureFile(modsFile);
     ensureFile(reportsFile);
     ensureFile(activityFile);
+    ensureFile(challengesFile);
 
     if (!fs.existsSync(gamesFile)) {
       writeJson(gamesFile, defaultGames);
@@ -640,6 +702,9 @@ module.exports = {
   saveReports,
   listActivity,
   saveActivity,
+  getEmailChallenge,
+  saveEmailChallenge,
+  deleteEmailChallenge,
   uploadModFile,
   createSignedModUpload,
   createSignedAssetUpload,
