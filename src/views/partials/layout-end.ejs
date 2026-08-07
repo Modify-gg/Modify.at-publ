@@ -13,9 +13,11 @@
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         const pointer = { x: -1000, y: -1000 };
         let points = [];
+        let projectiles = [];
+        let explosions = [];
         let width = 0;
         let height = 0;
-        let frame = 0;
+        let lastProjectile = 0;
 
         function resize() {
           const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -34,11 +36,38 @@
             vy: (Math.random() - 0.5) * 0.16,
             radius: Math.random() * 1.6 + 0.7,
           }));
+          projectiles = [];
+          explosions = [];
+        }
+
+        function createProjectile(now) {
+          if (reducedMotion || now - lastProjectile < 1500 || points.length < 2 || Math.random() > 0.018) return;
+          const start = points[Math.floor(Math.random() * points.length)];
+          const candidates = points.filter((point) => Math.hypot(point.x - start.x, point.y - start.y) > 120);
+          if (!candidates.length) return;
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          projectiles.push({ start, target, progress: 0, speed: 0.035 + Math.random() * 0.025 });
+          lastProjectile = now;
+        }
+
+        function explode(point) {
+          explosions.push({
+            x: point.x,
+            y: point.y,
+            life: 1,
+            glyph: ["M", "+", "*", "->"][Math.floor(Math.random() * 4)],
+            sparks: Array.from({ length: 8 }, (_, index) => ({
+              angle: (Math.PI * 2 * index) / 8,
+              distance: 0,
+            })),
+          });
         }
 
         function draw() {
           context.clearRect(0, 0, width, height);
           const maxDistance = width < 600 ? 108 : 145;
+          const now = performance.now();
+          createProjectile(now);
 
           points.forEach((point) => {
             if (!reducedMotion) {
@@ -76,6 +105,19 @@
 
           points.forEach((point) => {
             const distance = Math.hypot(pointer.x - point.x, pointer.y - point.y);
+            if (distance < 190) {
+              const alpha = (1 - distance / 190) * 0.62;
+              context.strokeStyle = `rgba(132, 255, 215, ${alpha})`;
+              context.lineWidth = 1.2;
+              context.beginPath();
+              context.moveTo(pointer.x, pointer.y);
+              context.lineTo(point.x, point.y);
+              context.stroke();
+            }
+          });
+
+          points.forEach((point) => {
+            const distance = Math.hypot(pointer.x - point.x, pointer.y - point.y);
             const glow = distance < 170 ? 0.9 : 0.55;
             context.fillStyle = `rgba(150, 245, 220, ${glow})`;
             context.beginPath();
@@ -83,7 +125,50 @@
             context.fill();
           });
 
-          if (!reducedMotion) frame = window.requestAnimationFrame(draw);
+          projectiles = projectiles.filter((projectile) => {
+            projectile.progress += projectile.speed;
+            const start = projectile.start;
+            const target = projectile.target;
+            const x = start.x + (target.x - start.x) * projectile.progress;
+            const y = start.y + (target.y - start.y) * projectile.progress;
+            context.strokeStyle = "rgba(255, 255, 255, 0.3)";
+            context.lineWidth = 1.5;
+            context.beginPath();
+            context.moveTo(start.x, start.y);
+            context.lineTo(x, y);
+            context.stroke();
+            context.fillStyle = "rgba(255, 255, 255, 0.95)";
+            context.beginPath();
+            context.arc(x, y, 2.4, 0, Math.PI * 2);
+            context.fill();
+            if (projectile.progress >= 1) {
+              explode(target);
+              return false;
+            }
+            return true;
+          });
+
+          explosions = explosions.filter((burst) => {
+            burst.life -= 0.035;
+            burst.sparks.forEach((spark) => {
+              spark.distance += 2.8;
+              const x = burst.x + Math.cos(spark.angle) * spark.distance;
+              const y = burst.y + Math.sin(spark.angle) * spark.distance;
+              context.fillStyle = `rgba(255, 220, 140, ${burst.life})`;
+              context.fillRect(x, y, 2, 2);
+            });
+            context.strokeStyle = `rgba(255, 220, 140, ${burst.life * 0.8})`;
+            context.lineWidth = 1.5;
+            context.beginPath();
+            context.arc(burst.x, burst.y, (1 - burst.life) * 28, 0, Math.PI * 2);
+            context.stroke();
+            context.fillStyle = `rgba(255, 255, 255, ${burst.life})`;
+            context.font = "700 12px Segoe UI, sans-serif";
+            context.fillText(burst.glyph, burst.x + 7, burst.y - 7);
+            return burst.life > 0;
+          });
+
+          if (!reducedMotion) window.requestAnimationFrame(draw);
         }
 
         window.addEventListener("resize", resize, { passive: true });
