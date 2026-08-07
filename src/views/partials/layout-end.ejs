@@ -4,6 +4,102 @@
       <a href="/terms">Terms of Service</a>
     </footer>
     <script>
+      (() => {
+        const canvas = document.getElementById("interactive-network-background");
+        if (!canvas) return;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const pointer = { x: -1000, y: -1000 };
+        let points = [];
+        let width = 0;
+        let height = 0;
+        let frame = 0;
+
+        function resize() {
+          const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+          width = window.innerWidth;
+          height = window.innerHeight;
+          canvas.width = Math.floor(width * ratio);
+          canvas.height = Math.floor(height * ratio);
+          canvas.style.width = `${width}px`;
+          canvas.style.height = `${height}px`;
+          context.setTransform(ratio, 0, 0, ratio, 0, 0);
+          const count = Math.min(72, Math.max(28, Math.floor((width * height) / 19000)));
+          points = Array.from({ length: count }, () => ({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            vx: (Math.random() - 0.5) * 0.16,
+            vy: (Math.random() - 0.5) * 0.16,
+            radius: Math.random() * 1.6 + 0.7,
+          }));
+        }
+
+        function draw() {
+          context.clearRect(0, 0, width, height);
+          const maxDistance = width < 600 ? 108 : 145;
+
+          points.forEach((point) => {
+            if (!reducedMotion) {
+              point.x += point.vx;
+              point.y += point.vy;
+              if (point.x < -20 || point.x > width + 20) point.vx *= -1;
+              if (point.y < -20 || point.y > height + 20) point.vy *= -1;
+            }
+
+            const dx = pointer.x - point.x;
+            const dy = pointer.y - point.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance < 170 && distance > 0) {
+              point.x -= (dx / distance) * 0.08;
+              point.y -= (dy / distance) * 0.08;
+            }
+          });
+
+          for (let index = 0; index < points.length; index += 1) {
+            const point = points[index];
+            for (let next = index + 1; next < points.length; next += 1) {
+              const other = points[next];
+              const distance = Math.hypot(point.x - other.x, point.y - other.y);
+              if (distance < maxDistance) {
+                const alpha = (1 - distance / maxDistance) * 0.24;
+                context.strokeStyle = `rgba(99, 245, 190, ${alpha})`;
+                context.lineWidth = 1;
+                context.beginPath();
+                context.moveTo(point.x, point.y);
+                context.lineTo(other.x, other.y);
+                context.stroke();
+              }
+            }
+          }
+
+          points.forEach((point) => {
+            const distance = Math.hypot(pointer.x - point.x, pointer.y - point.y);
+            const glow = distance < 170 ? 0.9 : 0.55;
+            context.fillStyle = `rgba(150, 245, 220, ${glow})`;
+            context.beginPath();
+            context.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
+            context.fill();
+          });
+
+          if (!reducedMotion) frame = window.requestAnimationFrame(draw);
+        }
+
+        window.addEventListener("resize", resize, { passive: true });
+        window.addEventListener("pointermove", (event) => {
+          pointer.x = event.clientX;
+          pointer.y = event.clientY;
+        }, { passive: true });
+        window.addEventListener("pointerleave", () => {
+          pointer.x = -1000;
+          pointer.y = -1000;
+        }, { passive: true });
+        resize();
+        draw();
+      })();
+    </script>
+    <script>
       document.querySelectorAll(".mod-card-link[data-href]").forEach((card) => {
         card.addEventListener("click", (event) => {
           if (event.target.closest("a, button, form, input, textarea, select")) return;
